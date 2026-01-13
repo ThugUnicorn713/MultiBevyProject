@@ -5,8 +5,6 @@ use bevy_renet2::prelude::{ConnectionConfig, ChannelConfig};
 use bevy_renet2::netcode::{NetcodeServerTransport, ServerAuthentication, ServerSetupConfig};
 use bevy_renet2::netcode::NativeSocket;
 
-
-
 use std::net::UdpSocket;
 use std::time::Duration;
 
