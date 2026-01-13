@@ -1,11 +1,10 @@
-mod client;
-mod server;
-mod messages;
+  mod network;
+// mod messages;
 
 use bevy::prelude::*;
 use std::env;
-use client::ClientPlugin;
-use server::ServerPlugin;
+use network::client::ClientPlugin;
+use network::server::ServerPlugin;
 
 fn is_host() -> bool {
     env::args().any(|arg| arg == "--host")
