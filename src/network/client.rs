@@ -9,14 +9,14 @@ pub struct ClientPlugin;
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
         app
-            .insert_resource(new_client())
+            .insert_resource(setup_client())
             .add_systems(Update, (send_join, receive_messages));
     }
 }
 
 
 
-fn new_client() -> RenetClient {
+fn setup_client() -> RenetClient {
     let socket = UdpSocket::bind("127.0.0.1.5001").unwrap();
     socket.set_unblocking(true).unwrap();
 
