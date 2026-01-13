@@ -9,6 +9,7 @@ dependencies = [
  "bevy",
  "bevy_renet2",
  "bincode",
+ "renet2_netcode",
  "serde",
 ]
 

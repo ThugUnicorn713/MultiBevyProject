@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_renet2::prelude::*;
 use bevy_renet2::prelude::{ConnectionConfig, ChannelConfig};
-use bevy_renet2::netcode::{ClientAuthentication, };
+use bevy_renet2::netcode::{ClientAuthentication, NetcodeClientTransport};
 use std::net::UdpSocket;
 use::std::time::Duration;
 use crate::network::messages::{ClientMessage, ServerMessage};

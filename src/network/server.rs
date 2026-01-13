@@ -1,7 +1,11 @@
+use bevy::ecs::system::command::insert_resource;
 use bevy::prelude::*;
 use bevy_renet2::prelude::*;
 use bevy_renet2::prelude::{ConnectionConfig, ChannelConfig};
-use bevy_renet2::netcode::{ServerAuthentication};
+use bevy_renet2::netcode::{NetcodeServerTransport, ServerAuthentication, ServerSetupConfig};
+use bevy_renet2::netcode::NativeSocket;
+
+
 
 use std::net::UdpSocket;
 use std::time::Duration;
@@ -12,8 +16,11 @@ pub struct ServerPlugin;
 
 impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
+
+        let (server, transport_layer) = setup_server();
         app
-            .insert_resource(setup_server())
+            .insert_resource(server)
+            .insert_resource(transport_layer)
             .insert_resource(Lobby::default())
             .add_systems(Update, update_server);
     }
@@ -26,8 +33,10 @@ struct Lobby {
     max_players: usize,
 }
 
-fn setup_server() -> RenetServer {
-    let socket = UdpSocket::bind("127.0.0.1:5000").unwrap();
+
+fn setup_server() -> (RenetServer, NetcodeServerTransport) {
+    let socket_addr = "127.0.0.1:5000".parse().unwrap();
+    let socket = UdpSocket::bind(socket_addr).unwrap();
     socket.set_nonblocking(true).unwrap();
 
       let channel = ChannelConfig {
@@ -36,9 +45,21 @@ fn setup_server() -> RenetServer {
         send_type: SendType::ReliableOrdered{resend_time: Duration::from_millis(16)},
     };
 
-    let connection_config = ConnectionConfig::from_channels(vec![channel.clone()], vec![channel.clone()]);
+    let connection_config = ConnectionConfig::from_channels(vec![channel.clone()], vec![channel]);
+    let server = RenetServer::new(connection_config);
 
-    RenetServer::new(connection_config)
+    let server_config = ServerSetupConfig {
+        current_time: Duration::from_secs(1),
+        max_clients: 3,
+        protocol_id: 0,
+        socket_addresses: vec![vec![socket_addr]],
+        authentication: ServerAuthentication::Unsecure
+    }; 
+
+    //let authentic = ServerAuthentication::Unsecure;
+    let transport_layer = NetcodeServerTransport::new(server_config, NativeSocket::new(socket).unwrap()).unwrap();
+
+    (server, transport_layer)      
 }
 
 fn update_server(
