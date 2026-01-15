@@ -1,6 +1,6 @@
 
   mod network;
-// mod messages;
+  mod game;
 
 use bevy::prelude::*;
 use std::env;

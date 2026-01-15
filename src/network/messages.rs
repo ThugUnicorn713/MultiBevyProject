@@ -1,4 +1,5 @@
 use serde::{Serialize, Deserialize};
+use bevy::prelude::*;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NetMessage {
@@ -14,6 +15,9 @@ pub enum NetMessage {
 pub enum ClientMessage {
 
     JoinLobby,
+    PlayerInput{ movement: Vec2,},
+   // GhostAbility{is_cooldown_done: bool,ability_type: f32,},
+    //BusterAbility{is_cooldown_done: bool, ability_type: f32,},
 
 }
 

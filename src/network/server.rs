@@ -9,6 +9,7 @@ use std::net::UdpSocket;
 use std::time::Duration;
 
 use crate::network::messages::{ClientMessage, ServerMessage};
+use crate::game::player_movement::server_move_player;
 
 pub struct ServerPlugin;
 
@@ -20,7 +21,7 @@ impl Plugin for ServerPlugin {
             .insert_resource(server)
             .insert_resource(transport_layer)
             .insert_resource(Lobby::default())
-            .add_systems(Update, update_server);
+            .add_systems(Update, (update_server, server_move_player,));
     }
 }
 
@@ -110,11 +111,15 @@ fn update_server(
                         println!("Client {} has joined the lobby!", client_id);
                         send_lobby_update(&mut server, &lobby);
                     }
+
+                    ClientMessage::PlayerInput { movement: _ } => {}  //movement handled in server_move_player
+                }
+                    
                 }
             } 
         }
 
-}
+
 
 fn send_lobby_update(
     server: &mut RenetServer, 

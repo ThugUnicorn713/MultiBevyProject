@@ -6,7 +6,7 @@ use std::net::UdpSocket;
 use::std::time::Duration;
 use rand::random;
 use crate::network::messages::{ClientMessage, ServerMessage};
-
+use crate::game::player_input::player_input_system;
 
 
 
@@ -18,7 +18,7 @@ impl Plugin for ClientPlugin {
         app
             .insert_resource(client)
             .insert_resource(transport_layer)
-            .add_systems(Update, (update_client, send_join, receive_messages,));
+            .add_systems(Update, (update_client, player_input_system, send_join, receive_messages,));
     }
 }
 
