@@ -1,3 +1,4 @@
+use bevy::ecs::system::command;
 use bevy::prelude::*;
 use bevy_renet2::prelude::*;
 use bevy_renet2::prelude::{ConnectionConfig, ChannelConfig};
@@ -5,26 +6,88 @@ use bevy_renet2::netcode::{ClientAuthentication, NetcodeClientTransport, NativeS
 use std::net::UdpSocket;
 use::std::time::Duration;
 use rand::random;
+use crate::HostFlag;
 use crate::network::messages::{ClientMessage, ServerMessage};
 use crate::game::player_input::player_input_system;
+use crate::network::constants::HOST_ID;
 
+
+#[derive(Component)]
+pub struct RemotePlayer{
+
+    pub id: u64,
+}
 
 
 pub struct ClientPlugin;
 
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
-        let (client, transport_layer) = setup_client();
+        
         app
-            .insert_resource(client)
-            .insert_resource(transport_layer)
-            .add_systems(Update, (update_client, player_input_system, send_join, receive_messages,));
+            
+            .add_systems(Startup, (setup_host_client, set_scene))
+            .add_systems(Update, (update_client, player_input_system, send_join,
+                        spawn_players));
+    }
+}
+
+fn debug_messages(mut client: ResMut<RenetClient>) {
+    while let Some(msg) = client.receive_message(0) {
+        println!("Client received raw bytes: {:?}", msg);
     }
 }
 
 
+fn set_scene(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,){
 
-fn setup_client() -> (RenetClient, NetcodeClientTransport) {
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(0.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+        GlobalTransform::default(),
+    ));
+
+    commands.spawn((PointLight {
+        intensity: 5000.0,
+        range: 500.0,
+        shadows_enabled: true,
+        ..default()
+     },
+      Transform::from_xyz(4.0, 8.0, 4.0),
+      GlobalTransform::default(),
+
+    ));
+
+    commands.spawn((
+    RemotePlayer { id: HOST_ID },
+    Mesh3d(meshes.add(Cuboid::new(5.0,5.0,5.0))),
+    MeshMaterial3d(materials.add(StandardMaterial { base_color: Color::WHITE, ..default() })),
+    Transform::from_xyz(0.0,1.0,0.0),
+    GlobalTransform::default(),
+    ));
+
+    //   //  DEBUG CUBE
+    // commands.spawn((
+    //     Mesh3d(meshes.add(Cuboid::new(2.0, 2.0, 2.0))),
+    //     MeshMaterial3d(materials.add(StandardMaterial {
+    //         base_color: Color::WHITE,
+    //         ..default()
+    //     })),
+    //     Transform::from_xyz(0.0, 1.0, 0.0),
+    //     GlobalTransform::default(),
+    //));
+}
+
+fn setup_host_client(mut commands: Commands, host_flag: Res<HostFlag>){
+    let (client, transport_layer) = setup_client(host_flag.0);
+            commands.insert_resource(client);
+            commands.insert_resource(transport_layer);
+}
+
+fn setup_client(is_host: bool) -> (RenetClient, NetcodeClientTransport) {
     let socket_addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
     let socket = UdpSocket::bind(socket_addr).unwrap();
     socket.set_nonblocking(true).unwrap();
@@ -38,10 +101,11 @@ fn setup_client() -> (RenetClient, NetcodeClientTransport) {
     let connection_config = ConnectionConfig::from_channels(vec![channel.clone()], vec![channel]);
 
     let client = RenetClient::new(connection_config,true);
+    let client_id = if is_host { HOST_ID } else { rand::random::<u64>() };
 
     let authentication = ClientAuthentication::Unsecure {
         server_addr: "127.0.0.1:5000".parse().unwrap(),
-        client_id: rand::random::<u64>(),
+        client_id,
         protocol_id: 0,
         socket_id: 0,
         user_data: None,
@@ -66,8 +130,8 @@ fn update_client(
     client.update(time.delta());
 }
 
-fn send_join(mut client: ResMut<RenetClient>, mut sent: Local<bool>) {
-    if *sent { return; }
+fn send_join(mut client: ResMut<RenetClient>, mut sent: Local<bool>, host_flag: Res<HostFlag>,) {
+    if *sent || host_flag.0 { return; }
 
     let msg = bincode::serialize(&ClientMessage::JoinLobby).unwrap();
     client.send_message(0, msg);
@@ -77,10 +141,47 @@ fn send_join(mut client: ResMut<RenetClient>, mut sent: Local<bool>) {
     println!("JoinLobby message sent");
 }
 
-fn receive_messages(mut client: ResMut<RenetClient>) {
-    while let Some(message) = client.receive_message(0) {
+// fn receive_messages(mut client: ResMut<RenetClient>) {
+//     while let Some(message) = client.receive_message(0) {
 
-        let msg: ServerMessage = bincode::deserialize(&message).unwrap();
-        println!("Server says: {:?}", msg);
+//         let msg: ServerMessage = bincode::deserialize(&message).unwrap();
+//         println!("Server says: {:?}", msg);
+//     }
+// } 
+
+fn spawn_players(
+    mut client: ResMut<RenetClient>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut commands: Commands,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    existing_players: Query<&RemotePlayer>, 
+){
+    while let Some(message) = client.receive_message(0){
+        
+        if let ServerMessage::LobbyUpdate(players) = bincode::deserialize(&message).unwrap() {
+            println!("Lobby update received: {:?}", players);
+
+         for (i,&id) in players.iter().enumerate() {
+                //let id = *id;
+                if existing_players.iter().any(|p| p.id == id) { continue; }
+
+                    //let index = existing_players.iter().count() as f32;   
+                     commands.spawn((
+                        RemotePlayer{id },
+                        Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
+                        //Transform::from_xyz(0.0, 0.5, 0.0),
+                        //MeshMaterial3d(materials.add(Color::WHITE)),
+                        MeshMaterial3d(materials.add(StandardMaterial {
+                                        base_color: Color::WHITE,
+                                                ..default()
+                                            })),
+                        Transform::from_xyz(i as f32 * 6.0, 1.0, 0.0),
+                        GlobalTransform::default(),
+                     ));
+           
+            }
+
+        }
     }
-} 
+    
+}

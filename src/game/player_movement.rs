@@ -15,16 +15,7 @@ pub fn server_move_player(
 
             let msg: ClientMessage = bincode::deserialize(&message).unwrap();
 
-            if let ClientMessage::PlayerInput { movement } = msg {
-                for (player, mut transform) in query.iter_mut() {
-                    
-                    if player.id == client_id {
-                        
-                        let speed = player.speed;
-                        transform.translation += (movement * speed * time.delta_secs()).extend(0.0);
-                    }
-                }
-            }
+          
 
         }
 
