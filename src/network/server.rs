@@ -1,18 +1,18 @@
 use bevy::ecs::system::command::insert_resource;
 use bevy::prelude::*;
 use bevy_renet2::prelude::*;
-use bevy_renet2::prelude::{ConnectionConfig, ChannelConfig};
+use bevy_renet2::prelude::{ConnectionConfig, ChannelConfig, ServerEvent};
 use bevy_renet2::netcode::{NetcodeServerTransport, ServerAuthentication, ServerSetupConfig};
 use bevy_renet2::netcode::NativeSocket;
 
 use std::net::UdpSocket;
 use std::time::Duration;
 
+use crate::HostFlag;
 use crate::network::messages::{ClientMessage, ServerMessage};
-//use crate::game::player_movement::server_move_player;
 use crate::game::player::Player;
 use crate::network::constants::HOST_ID;
-use rand::random;
+
 
 pub struct ServerPlugin;
 
@@ -24,6 +24,7 @@ impl Plugin for ServerPlugin {
             .insert_resource(server)
             .insert_resource(transport_layer)
             .insert_resource(Lobby::default())
+            .add_systems(Startup, spawn_host_entity)
             .add_systems(Update, (update_server,));
     }
 }
@@ -32,7 +33,7 @@ impl Plugin for ServerPlugin {
 struct Lobby {
 
     players: Vec<u64>,
-    max_players: usize,
+    confirmed: Vec<u64>,
 }
 
 
@@ -60,10 +61,19 @@ fn setup_server() -> (RenetServer, NetcodeServerTransport) {
 
     let transport_layer = NetcodeServerTransport::new(server_config, NativeSocket::new(socket).unwrap()).unwrap();
 
-    (server, transport_layer)      
+    (server, transport_layer)     
+
+    
 }
 
+fn spawn_host_entity(mut commands: Commands){
 
+         commands.spawn((
+            Player { id: HOST_ID, speed: 5.0 },
+            Transform::from_xyz(0.0, 0.5, 0.0),
+            GlobalTransform::default(),
+        ));
+    } 
 
 
 fn update_server(
@@ -73,25 +83,33 @@ fn update_server(
     time:Res<Time>,
     mut commands: Commands,
     mut query: Query<(&Player, &mut Transform)>,
+    host_id: Res<HostFlag>,
 ) {
     let _ = transport.update(time.delta(), &mut server);
     server.update(time.delta());
 
-    // // --- Handle new host player manually ---
-    // if !lobby.players.contains(&HOST_ID) {
-    //     println!("Adding host player to lobby");
-    //     lobby.players.push(HOST_ID);
+    while let Some(event) = server.get_event() {
+        match event {
+            ServerEvent::ClientConnected { client_id } => {
+                println!("Renet event: client {} connected", client_id);
+            }
 
-    //     commands.spawn((
-    //         Player { id: HOST_ID, speed: 5.0 },
-    //         Transform::from_xyz(0.0, 0.5, 0.0),
-    //         GlobalTransform::default(),
-    //     ));
-    // }
+            ServerEvent::ClientDisconnected { client_id, reason } => {
+                println!("Renet event: client {} disconnected: {:?}", client_id, reason);
 
+                lobby.players.retain(|p| *p != client_id);
+                lobby.confirmed.retain(|p| *p != client_id);
+
+                send_lobby_update(&mut server, &lobby);
+            }
+        }
+    }
+    
+    
     let connected_clients: Vec<u64> = server.clients_id().into_iter().collect();
-
         for client_id in connected_clients.iter() {
+
+               if *client_id == HOST_ID {continue;} 
 
             if lobby.players.contains(client_id){
                  continue;
@@ -107,6 +125,7 @@ fn update_server(
             }
 
             lobby.players.push(*client_id);
+            lobby.confirmed.push(*client_id);
 
 
           commands.spawn((
@@ -123,21 +142,8 @@ fn update_server(
             send_lobby_update(&mut server, &lobby);
         }
 
-        let disconnected: Vec<u64> = lobby.players.iter().cloned()  //disconnetion handle logic 
-            .filter(|id| !server.is_connected(*id)) // SECURITY!!!!! detects drops and silent disconnets
-            .collect();
-
-        for id in disconnected {
-            println!("Client {} has been Yeeted!", id);
-
-            lobby.players.retain(|p| *p != id);
-            send_lobby_update(&mut server, &mut lobby);
-        }
-
+        
         for &client_id in &lobby.players{
-            if client_id == HOST_ID {continue;}
-                                                    //iter().cloned() {        //send client messages
-            
             while let Some(message) = server.receive_message(client_id, 0) {
 
                 let msg: ClientMessage = bincode::deserialize(&message).unwrap();
@@ -159,11 +165,6 @@ fn update_server(
                 }
                     
             }
-
-                    // --- Send lobby update every frame so host + clients see all players ---
-            let update = ServerMessage::LobbyUpdate(lobby.players.clone());
-            let bytes = bincode::serialize(&update).unwrap();
-            for &id in &lobby.players {server.send_message(id, 0, bytes.clone());} 
     }
 }
 

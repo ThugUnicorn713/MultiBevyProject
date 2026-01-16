@@ -5,7 +5,6 @@ use bevy_renet2::prelude::{ConnectionConfig, ChannelConfig};
 use bevy_renet2::netcode::{ClientAuthentication, NetcodeClientTransport, NativeSocket};
 use std::net::UdpSocket;
 use::std::time::Duration;
-use rand::random;
 use crate::HostFlag;
 use crate::network::messages::{ClientMessage, ServerMessage};
 use crate::game::player_input::player_input_system;
@@ -28,16 +27,21 @@ impl Plugin for ClientPlugin {
             
             .add_systems(Startup, (setup_host_client, set_scene))
             .add_systems(Update, (update_client, player_input_system, send_join,
-                        spawn_players));
+                        spawn_players)
+                    .run_if(has_client),  //seperates clients from host
+                    );
     }
 }
 
-fn debug_messages(mut client: ResMut<RenetClient>) {
-    while let Some(msg) = client.receive_message(0) {
-        println!("Client received raw bytes: {:?}", msg);
-    }
-}
+// fn debug_messages(mut client: ResMut<RenetClient>) {
+//     while let Some(msg) = client.receive_message(0) {
+//         println!("Client received raw bytes: {:?}", msg);
+//     }
+// }
 
+fn has_client(client: Option<Res<RenetClient>>) -> bool { 
+    client.is_some()
+}
 
 fn set_scene(
     mut commands: Commands,
@@ -82,27 +86,31 @@ fn set_scene(
 }
 
 fn setup_host_client(mut commands: Commands, host_flag: Res<HostFlag>){
-    let (client, transport_layer) = setup_client(host_flag.0);
+    if host_flag.0{
+        return;
+    }
+
+    let (client, transport_layer) = setup_client();
             commands.insert_resource(client);
             commands.insert_resource(transport_layer);
 }
 
-fn setup_client(is_host: bool) -> (RenetClient, NetcodeClientTransport) {
+fn setup_client() -> (RenetClient, NetcodeClientTransport) {
     let socket_addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
     let socket = UdpSocket::bind(socket_addr).unwrap();
     socket.set_nonblocking(true).unwrap();
 
        let channel = ChannelConfig {
         channel_id: 0,
-        max_memory_usage_bytes: 1024 * 64, // 64 KB buffer
+        max_memory_usage_bytes: 1024 * 64, 
         send_type: SendType::ReliableOrdered{resend_time: Duration::from_millis(16)},
     };
 
     let connection_config = ConnectionConfig::from_channels(vec![channel.clone()], vec![channel]);
 
     let client = RenetClient::new(connection_config,true);
-    let client_id = if is_host { HOST_ID } else { rand::random::<u64>() };
-
+    let client_id =  { rand::random::<u64>() };
+   
     let authentication = ClientAuthentication::Unsecure {
         server_addr: "127.0.0.1:5000".parse().unwrap(),
         client_id,
@@ -162,15 +170,11 @@ fn spawn_players(
             println!("Lobby update received: {:?}", players);
 
          for (i,&id) in players.iter().enumerate() {
-                //let id = *id;
                 if existing_players.iter().any(|p| p.id == id) { continue; }
 
-                    //let index = existing_players.iter().count() as f32;   
                      commands.spawn((
                         RemotePlayer{id },
                         Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
-                        //Transform::from_xyz(0.0, 0.5, 0.0),
-                        //MeshMaterial3d(materials.add(Color::WHITE)),
                         MeshMaterial3d(materials.add(StandardMaterial {
                                         base_color: Color::WHITE,
                                                 ..default()
