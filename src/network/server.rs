@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use crate::HostFlag;
 use crate::network::messages::{ClientMessage, ServerMessage};
-use crate::game::player::Player;
+use crate::game::player::*;
+use crate::game::player::move_host;
+
 use crate::network::constants::HOST_ID;
 
 
@@ -25,7 +27,8 @@ impl Plugin for ServerPlugin {
             .insert_resource(transport_layer)
             .insert_resource(Lobby::default())
             .add_systems(Startup, spawn_host_entity)
-            .add_systems(Update, (update_server,));
+            .add_systems(Update, (update_server,))
+            .add_systems(Update, move_host.run_if(|host_flag: Res<HostFlag>| host_flag.0));
     }
 }
 

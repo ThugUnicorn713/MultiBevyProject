@@ -33,26 +33,17 @@ pub fn player_input_system(
         direction.x += 1.0;
     }
 
-     if direction == Vec2::ZERO { return; } // nothing pressed
+     if direction == Vec2::ZERO { return; }
 
      let movement_vec2 = direction.normalize();       // For sending to server
-     let movement_vec3 = movement_vec2.extend(0.0);  // For moving transform locally
 
 
-     if host_flag.0 {
-        for (player, mut transform) in query.iter_mut() {
-            if player.id == HOST_ID {
-                transform.translation += movement_vec3 * player.speed * time.delta_secs();
-                println!("Host moved to: {:?}", transform.translation);
-            }
-    }
-} else {
+
     let msg = bincode::serialize(&ClientMessage::PlayerInput { movement: movement_vec2 }).unwrap();
     client.send_message(0, msg);
     println!("Sending movement to server: {:?}", movement_vec2);
 
 }   
    
-    }
 
 
