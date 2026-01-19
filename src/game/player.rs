@@ -29,11 +29,11 @@ pub fn move_host(
     let mut direction = Vec2::ZERO;
 
     if key.pressed(KeyCode::KeyW){
-        direction.y += 1.0;
+        direction.y -= 1.0;
     }
 
     if key.pressed(KeyCode::KeyS){
-        direction.y -= 1.0;
+        direction.y += 1.0;
     }
 
     if key.pressed(KeyCode::KeyA){
@@ -46,11 +46,11 @@ pub fn move_host(
 
      if direction == Vec2::ZERO { return; }
 
-     let movement = direction.normalize();  // For moving transform locally
+     let movement = Vec3::new(direction.x, 0.0, direction.y);
      
         for (player, mut transform) in query.iter_mut() {
             if player.id == HOST_ID {
-                transform.translation += movement.extend(0.0) * player.speed * time.delta_secs();
+                transform.translation += movement * player.speed * time.delta_secs();
                 println!("Host moved to: {:?}", transform.translation);
             }
     }

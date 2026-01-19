@@ -1,20 +1,22 @@
-use bevy::ecs::system::command;
 use bevy::prelude::*;
 use bevy_renet2::prelude::*;
 use bevy_renet2::prelude::{ConnectionConfig, ChannelConfig};
 use bevy_renet2::netcode::{ClientAuthentication, NetcodeClientTransport, NativeSocket};
 use std::net::UdpSocket;
 use::std::time::Duration;
+use std::time::SystemTime;
 use crate::HostFlag;
 use crate::network::messages::{ClientMessage, ServerMessage};
 use crate::game::player_input::player_input_system;
 use crate::network::constants::HOST_ID;
+use std::collections::HashSet;
 
 
 #[derive(Component)]
 pub struct RemotePlayer{
 
     pub id: u64,
+    
 }
 
 
@@ -26,8 +28,15 @@ impl Plugin for ClientPlugin {
         app
             
             .add_systems(Startup, (setup_host_client, set_scene))
-            .add_systems(Update, (update_client, player_input_system, send_join,
-                        spawn_players)
+            .add_systems(Update,
+                 (
+                    update_client, 
+                    player_input_system, 
+                    send_join, 
+                    receive_messages,
+                    flush_client_packets,
+                )
+                    .chain()
                     .run_if(has_client),  //seperates clients from host
                     );
     }
@@ -46,11 +55,13 @@ fn has_client(client: Option<Res<RenetClient>>) -> bool {
 fn set_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,){
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut existing_ids: Local<HashSet<u64>>,
+){
 
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(0.0, 90.0, 90.0).looking_at(Vec3::ZERO, Vec3::Y),
         GlobalTransform::default(),
     ));
 
@@ -66,23 +77,13 @@ fn set_scene(
     ));
 
     commands.spawn((
-    RemotePlayer { id: HOST_ID },
-    Mesh3d(meshes.add(Cuboid::new(5.0,5.0,5.0))),
-    MeshMaterial3d(materials.add(StandardMaterial { base_color: Color::WHITE, ..default() })),
-    Transform::from_xyz(0.0,1.0,0.0),
-    GlobalTransform::default(),
+        Mesh3d(meshes.add(Rectangle::new(100.0, 100.0))),
+        MeshMaterial3d(materials.add(Color::srgb_u8(0, 190, 0))),
+        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+        GlobalTransform::default(),
     ));
 
-    //   //  DEBUG CUBE
-    // commands.spawn((
-    //     Mesh3d(meshes.add(Cuboid::new(2.0, 2.0, 2.0))),
-    //     MeshMaterial3d(materials.add(StandardMaterial {
-    //         base_color: Color::WHITE,
-    //         ..default()
-    //     })),
-    //     Transform::from_xyz(0.0, 1.0, 0.0),
-    //     GlobalTransform::default(),
-    //));
+    existing_ids.insert(HOST_ID);
 }
 
 fn setup_host_client(mut commands: Commands, host_flag: Res<HostFlag>){
@@ -102,14 +103,24 @@ fn setup_client() -> (RenetClient, NetcodeClientTransport) {
 
        let channel = ChannelConfig {
         channel_id: 0,
-        max_memory_usage_bytes: 1024 * 64, 
-        send_type: SendType::ReliableOrdered{resend_time: Duration::from_millis(16)},
+        max_memory_usage_bytes: 5* 1024* 1024, //5mb
+        send_type: SendType::ReliableOrdered{resend_time: Duration::from_millis(100)}, //16
     };
+      
 
-    let connection_config = ConnectionConfig::from_channels(vec![channel.clone()], vec![channel]);
+    let connection_config = ConnectionConfig{    
+        client_channels_config: vec![channel.clone()],
+        server_channels_config: vec![channel],
+        available_bytes_per_tick: 16384, //default()
+    };   
 
-    let client = RenetClient::new(connection_config,true);
+    let client = RenetClient::new(connection_config,false); //free up the socket, is restrictive, refused to connect if true
     let client_id =  { rand::random::<u64>() };
+
+
+    let current_time = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap();
    
     let authentication = ClientAuthentication::Unsecure {
         server_addr: "127.0.0.1:5000".parse().unwrap(),
@@ -120,8 +131,10 @@ fn setup_client() -> (RenetClient, NetcodeClientTransport) {
 
     };
 
+    println!("My ID: {:?}", client_id);
+
      let transport_layer = NetcodeClientTransport::new(
-        Duration::from_millis(16), 
+        current_time,
         authentication, 
         NativeSocket::new(socket).unwrap()).unwrap();
 
@@ -134,12 +147,27 @@ fn update_client(
     mut transport: ResMut<NetcodeClientTransport>,
     time: Res<Time>,
 ) {
-    let _ = transport.update(time.delta(), &mut client);
+
+     match transport.update(time.delta(), &mut client) {
+        Ok(_) => {},
+        Err(e) => println!("CLIENT TRANSPORT ERROR: {:?}", e),
+    }
     client.update(time.delta());
 }
 
+fn flush_client_packets(
+    mut client: ResMut<RenetClient>,
+    mut transport: ResMut<NetcodeClientTransport>,
+) {
+    let _ = transport.send_packets(&mut client);
+} 
+
 fn send_join(mut client: ResMut<RenetClient>, mut sent: Local<bool>, host_flag: Res<HostFlag>,) {
     if *sent || host_flag.0 { return; }
+
+    if !client.is_connected() {
+        return;
+    }
 
     let msg = bincode::serialize(&ClientMessage::JoinLobby).unwrap();
     client.send_message(0, msg);
@@ -149,43 +177,64 @@ fn send_join(mut client: ResMut<RenetClient>, mut sent: Local<bool>, host_flag: 
     println!("JoinLobby message sent");
 }
 
-// fn receive_messages(mut client: ResMut<RenetClient>) {
-//     while let Some(message) = client.receive_message(0) {
-
-//         let msg: ServerMessage = bincode::deserialize(&message).unwrap();
-//         println!("Server says: {:?}", msg);
-//     }
-// } 
-
-fn spawn_players(
-    mut client: ResMut<RenetClient>,
-    mut meshes: ResMut<Assets<Mesh>>,
+fn receive_messages(mut client: ResMut<RenetClient>,
     mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    existing_players: Query<&RemotePlayer>, 
-){
-    while let Some(message) = client.receive_message(0){
+    mut players: Query<(&RemotePlayer, &mut Transform)>,
+    mut existing_ids: Local<HashSet<u64>>,
+) {  
+
+let mut message_count = 0;
+ while let Some(message) = client.receive_message(0) {
+    message_count += 1;
+        println!("CLIENT: Received message #{}, {} bytes", message_count, message.len());
+        println!("CLIENT: Received {} bytes", message.len());
         
-        if let ServerMessage::LobbyUpdate(players) = bincode::deserialize(&message).unwrap() {
-            println!("Lobby update received: {:?}", players);
+        if let Ok(msg) = bincode::deserialize::<ServerMessage>(&message) {
+            println!("CLIENT: Deserialized: {:?}", msg);
+            
+            match msg {
+                ServerMessage::LobbyUpdate(ids) => {
+                     println!("CLIENT: Processing LobbyUpdate with {} players: {:?}", ids.len(), ids);
+                    for (i, id) in ids.iter().enumerate() {
+                        if existing_ids.contains(id) {
+                             println!("  -> Player {} already exists, skipping", id);
+                            continue;
+                        }
 
-         for (i,&id) in players.iter().enumerate() {
-                if existing_players.iter().any(|p| p.id == id) { continue; }
+                         println!("  -> Spawning new player {}", id);
+                        commands.spawn((
+                            RemotePlayer { id: *id },
+                            Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
+                            MeshMaterial3d(materials.add(
+                                if *id == HOST_ID { 
+                                    Color::srgb_u8(0, 0, 0) 
+                                } else { 
+                                    Color::srgb_u8(255, 255, 255) 
+                                }
+                            )),
+                            Transform::from_xyz(i as f32 * 6.0, 0.5, 0.0),
+                            GlobalTransform::default(),
+                        ));
 
-                     commands.spawn((
-                        RemotePlayer{id },
-                        Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
-                        MeshMaterial3d(materials.add(StandardMaterial {
-                                        base_color: Color::WHITE,
-                                                ..default()
-                                            })),
-                        Transform::from_xyz(i as f32 * 6.0, 1.0, 0.0),
-                        GlobalTransform::default(),
-                     ));
-           
+                        existing_ids.insert(*id);
+                    }
+                }
+
+                ServerMessage::PlayerTransform { id, position } => {
+                     println!("CLIENT: PlayerTransform for id={}, pos={:?}", id, position);
+                    for (player, mut transform) in players.iter_mut() {
+                        if player.id == id {
+                            transform.translation = position;
+                        }
+                    }
+                }
             }
-
         }
     }
-    
 }
+
+
+
+
