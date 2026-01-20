@@ -10,8 +10,9 @@ use std::time::SystemTime;
 
 use crate::HostFlag;
 use crate::network::messages::{ClientMessage, ServerMessage};
-use crate::game::player::{self, *};
+use crate::game::player::*;
 use crate::game::player::move_host;
+use crate::game::torch::*;
 
 use crate::network::constants::HOST_ID;
 
@@ -26,7 +27,7 @@ impl Plugin for ServerPlugin {
             .insert_resource(server)
             .insert_resource(transport_layer)
             .insert_resource(Lobby::default())
-            .add_systems(Startup, (spawn_host_entity, ))
+            .add_systems(Startup, spawn_host_entity)
             .add_systems(Update, (update_server,))
             .add_systems(Update, move_host.run_if(|host_flag: Res<HostFlag>| host_flag.0));
     }
@@ -115,6 +116,7 @@ fn update_server(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    
      let _ = transport.update(time.delta(), &mut server);
     server.update(time.delta());
   
@@ -123,6 +125,7 @@ fn update_server(
         println!("SERVER stats for client {}: sent_bytes={}, received_bytes={}", client_id, stats.bytes_sent_per_second, stats.bytes_received_per_second);
     }
     
+
     // Handle connection/disconnection events
     while let Some(event) = server.get_event() {
         match event {
@@ -136,13 +139,16 @@ fn update_server(
                     println!("SERVER: Added client {} to lobby.players", client_id);
 
                     // Spawn their player entity
-                    commands.spawn((
+                   let mut entity = commands.spawn((
                         Player { id: client_id, speed: 5.0 },
                         Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
                         MeshMaterial3d(materials.add(Color::srgb_u8(255, 255, 255))),
                         Transform::from_xyz((lobby.players.len() as f32) * 6.0, 0.5, 0.0),
                         GlobalTransform::default(),
                     ));
+                        
+                        spawn_torch(&mut entity, &mut meshes, &mut materials);
+
                      println!("SERVER: Spawned player entity for client {}", client_id);
                      send_lobby_update(&mut server, &lobby);
                 }
@@ -159,7 +165,7 @@ fn update_server(
     }
 
 
-    // Process messages from all connected clients WE KNOW THIS WONT RUN!!!
+    // Process messages from all connected clients
 
     for client_id in server.clients_id() {
 

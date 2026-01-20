@@ -8,6 +8,7 @@ use std::time::SystemTime;
 use crate::HostFlag;
 use crate::network::messages::{ClientMessage, ServerMessage};
 use crate::game::player_input::player_input_system;
+use crate::game::torch::spawn_torch;
 use crate::network::constants::HOST_ID;
 use std::collections::HashSet;
 
@@ -67,9 +68,10 @@ fn set_scene(
 
     commands.spawn((PointLight {
         intensity: 5000.0,
-        range: 500.0,
+        range: 1000.0,
         shadows_enabled: true,
-        ..default()
+        color:Color::WHITE,
+      ..default()
      },
       Transform::from_xyz(4.0, 8.0, 4.0),
       GlobalTransform::default(),
@@ -204,7 +206,7 @@ let mut message_count = 0;
                         }
 
                          println!("  -> Spawning new player {}", id);
-                        commands.spawn((
+                        let mut entity = commands.spawn((
                             RemotePlayer { id: *id },
                             Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
                             MeshMaterial3d(materials.add(
@@ -217,6 +219,10 @@ let mut message_count = 0;
                             Transform::from_xyz(i as f32 * 6.0, 0.5, 0.0),
                             GlobalTransform::default(),
                         ));
+                        
+                        if *id != HOST_ID {
+                            spawn_torch(&mut entity, &mut meshes, &mut materials);
+                        }
 
                         existing_ids.insert(*id);
                     }

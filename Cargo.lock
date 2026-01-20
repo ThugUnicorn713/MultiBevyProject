@@ -7,6 +7,7 @@ name = "FlashFright"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "bevy_pbr",
  "bevy_renet2",
  "bincode",
  "rand",

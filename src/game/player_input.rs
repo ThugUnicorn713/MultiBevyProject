@@ -36,7 +36,7 @@ pub fn player_input_system(
 
     let msg = bincode::serialize(&ClientMessage::PlayerInput { movement: movement }).unwrap();
     client.send_message(0, msg);
-    println!("Sending movement to server: {:?}", movement);
+    //println!("Sending movement to server: {:?}", movement);
 
 }   
    

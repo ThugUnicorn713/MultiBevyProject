@@ -51,7 +51,7 @@ pub fn move_host(
         for (player, mut transform) in query.iter_mut() {
             if player.id == HOST_ID {
                 transform.translation += movement * player.speed * time.delta_secs();
-                println!("Host moved to: {:?}", transform.translation);
+                //println!("Host moved to: {:?}", transform.translation);
             }
     }
 

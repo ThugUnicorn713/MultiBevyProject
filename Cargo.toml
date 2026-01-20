@@ -7,6 +7,7 @@ edition = "2024"
 bevy = "0.16"
 bevy_renet2 = "0.9"
 renet2_netcode = "0.9"
+bevy_pbr = "0.16"
 rand = "0.8"
 serde = {version = "1.0", features = ["derive"]}
 bincode = "1.3" 
