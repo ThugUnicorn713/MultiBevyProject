@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use serde::{Serialize, Deserialize};
 use crate::HostFlag;
 use crate::network::constants::HOST_ID;
+use bevy::input::mouse::MouseMotion;
 
 #[derive(Component)]
 pub struct Player {
@@ -57,3 +58,31 @@ pub fn move_host(
 
 
 }
+
+// pub fn rotate_host(
+//     mut motion_events: EventReader<MouseMotion>,
+//     mut query: Query<(&Player, &mut Transform)>,
+//     host_flag: Res<HostFlag>,
+// ){
+
+//     if !host_flag.0 {return;}
+
+//     let mut total_delta = Vec2::ZERO;
+
+//     for event in motion_events.read(){
+//         total_delta += event.delta;
+//     }
+
+//     if total_delta == Vec2::ZERO{ return;}
+
+//     let sensitivity = 0.02;
+//     let yaw = -total_delta.x * sensitivity;
+
+//     for (player, mut transform) in query.iter_mut(){
+//         if player.id == HOST_ID{
+
+//             transform.rotate_y(yaw);
+//         }
+//     }
+
+// }

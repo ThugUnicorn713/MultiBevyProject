@@ -228,11 +228,12 @@ let mut message_count = 0;
                     }
                 }
 
-                ServerMessage::PlayerTransform { id, position } => {
+                ServerMessage::PlayerTransform { id, position, rotation } => {
                      println!("CLIENT: PlayerTransform for id={}, pos={:?}", id, position);
                     for (player, mut transform) in players.iter_mut() {
                         if player.id == id {
                             transform.translation = position;
+                            transform.rotation = rotation;
                         }
                     }
                 }

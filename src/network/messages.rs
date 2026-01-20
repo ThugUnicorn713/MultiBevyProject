@@ -5,7 +5,10 @@ use bevy::prelude::*;
 pub enum ClientMessage {
 
     JoinLobby,
-    PlayerInput{ movement: Vec3,},
+    PlayerInput{ 
+        movement: Vec3,
+        rotation: f32,
+    },
    // GhostAbility{is_cooldown_done: bool,ability_type: f32,},
     //BusterAbility{is_cooldown_done: bool, ability_type: f32,},
 
@@ -19,6 +22,6 @@ pub enum ServerMessage {
     PlayerTransform{
         id: u64,
         position: Vec3,
+        rotation: Quat,
     }
-    
 }

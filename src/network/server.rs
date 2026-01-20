@@ -186,10 +186,12 @@ fn update_server(
                         }
                     }
                     
-                    ClientMessage::PlayerInput { movement } => {
+                    ClientMessage::PlayerInput { movement, rotation } => {
                         for (player, mut transform) in query.iter_mut() {
                             if player.id == client_id {
                                 transform.translation += movement * player.speed * time.delta_secs();
+                                transform.rotate_y(rotation);
+                                //player.rotation += rotation;
                             }
                         }
                     }
@@ -203,6 +205,7 @@ fn update_server(
         let msg = ServerMessage::PlayerTransform {
             id: player.id,
             position: transform.translation,
+            rotation: transform.rotation,
         };
 
         let data = bincode::serialize(&msg).unwrap();
