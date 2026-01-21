@@ -133,7 +133,7 @@ fn setup_client() -> (RenetClient, NetcodeClientTransport) {
 
     };
 
-    println!("My ID: {:?}", client_id);
+    //println!("My ID: {:?}", client_id);
 
      let transport_layer = NetcodeClientTransport::new(
         current_time,
@@ -187,14 +187,14 @@ fn receive_messages(mut client: ResMut<RenetClient>,
     mut existing_ids: Local<HashSet<u64>>,
 ) {  
 
-let mut message_count = 0;
+//let mut message_count = 0;
  while let Some(message) = client.receive_message(0) {
-    message_count += 1;
-        println!("CLIENT: Received message #{}, {} bytes", message_count, message.len());
-        println!("CLIENT: Received {} bytes", message.len());
+    //message_count += 1;
+       // println!("CLIENT: Received message #{}, {} bytes", message_count, message.len());
+        //println!("CLIENT: Received {} bytes", message.len());
         
         if let Ok(msg) = bincode::deserialize::<ServerMessage>(&message) {
-            println!("CLIENT: Deserialized: {:?}", msg);
+           // println!("CLIENT: Deserialized: {:?}", msg);
             
             match msg {
                 ServerMessage::LobbyUpdate(ids) => {
@@ -229,13 +229,17 @@ let mut message_count = 0;
                 }
 
                 ServerMessage::PlayerTransform { id, position, rotation } => {
-                     println!("CLIENT: PlayerTransform for id={}, pos={:?}", id, position);
+                   //  println!("CLIENT: PlayerTransform for id={}, pos={:?}", id, position);
                     for (player, mut transform) in players.iter_mut() {
                         if player.id == id {
                             transform.translation = position;
                             transform.rotation = rotation;
                         }
                     }
+                }
+
+                ServerMessage::HostDetected { by_player_id, distance } => {
+                     println!("CLIENT: Host spotted by player {} at {}m!", by_player_id, distance);
                 }
             }
         }

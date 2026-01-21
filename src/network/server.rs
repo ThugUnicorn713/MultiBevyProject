@@ -1,8 +1,11 @@
+use bevy::math::bounding::Aabb3d;
+use bevy::math::bounding::RayCast3d;
 use bevy::prelude::*;
 use bevy_renet2::prelude::*;
 use bevy_renet2::prelude::{ConnectionConfig, ChannelConfig, ServerEvent};
 use bevy_renet2::netcode::{NetcodeServerTransport, ServerAuthentication, ServerSetupConfig};
 use bevy_renet2::netcode::NativeSocket;
+ 
 
 use std::net::UdpSocket;
 use std::time::Duration;
@@ -27,10 +30,17 @@ impl Plugin for ServerPlugin {
             .insert_resource(server)
             .insert_resource(transport_layer)
             .insert_resource(Lobby::default())
+            .add_event::<HostDetected>()
             .add_systems(Startup, spawn_host_entity)
-            .add_systems(Update, (update_server,))
+            .add_systems(Update, (update_server,flashlight_detection, host_detection_handler))
             .add_systems(Update, move_host.run_if(|host_flag: Res<HostFlag>| host_flag.0));
     }
+}
+
+#[derive(Event)]
+pub struct HostDetected {
+    pub detected_by_player_id: u64,
+    pub distance: f32,
 }
 
 #[derive(Resource)]
@@ -101,6 +111,7 @@ fn spawn_host_entity(
         MeshMaterial3d(materials.add(Color::srgb_u8(0, 0, 0))), // Black for host
         Transform::from_xyz(0.0, 0.5, 0.0),
         GlobalTransform::default(),
+        HostCollider{aabb:Aabb3d{min: Vec3::splat(-2.5).into(), max: Vec3::splat(2.5).into(),}},
     ));
 } 
 
@@ -122,7 +133,7 @@ fn update_server(
   
     for client_id in server.clients_id() {
         let stats = server.network_info(client_id).unwrap();
-        println!("SERVER stats for client {}: sent_bytes={}, received_bytes={}", client_id, stats.bytes_sent_per_second, stats.bytes_received_per_second);
+       // println!("SERVER stats for client {}: sent_bytes={}, received_bytes={}", client_id, stats.bytes_sent_per_second, stats.bytes_received_per_second);
     }
     
 
@@ -170,10 +181,10 @@ fn update_server(
     for client_id in server.clients_id() {
 
         while let Some(message) = server.receive_message(client_id, 0) { 
-            println!("SERVER: Received {} bytes from client {}", message.len(), client_id);
+           // println!("SERVER: Received {} bytes from client {}", message.len(), client_id);
             
             if let Ok(msg) = bincode::deserialize::<ClientMessage>(&message) {
-                println!("SERVER: Deserialized: {:?}", msg);
+               // println!("SERVER: Deserialized: {:?}", msg);
 
                 match msg {
                     ClientMessage::JoinLobby => {
@@ -240,3 +251,78 @@ fn send_lobby_update(
     }
 
 }
+
+fn flashlight_detection(
+    flash_query: Query<(&GlobalTransform, &Flashlight, &ChildOf)>,
+    player_query: Query<(&Player)>,
+    host_query: Query<(&GlobalTransform, &Player, &HostCollider)>,
+    mut detect_events: EventWriter<HostDetected>
+){
+    let Some((host_transform, host_player, host_collider)) = host_query.iter()
+        .find(|(_, player, _)| player.id == HOST_ID)
+    else{
+        return;
+    };
+
+    let host_pos: Vec3 = host_transform.translation();
+    let world_aabb = Aabb3d{
+        min: (Vec3::from(host_collider.aabb.min) + host_pos).into(),
+        max: (Vec3::from(host_collider.aabb.max) + host_pos).into(),
+    };
+
+    //check each flashlight
+    for (torch_transform, flashlight, child_of) in flash_query.iter() {
+        let parent_entity = child_of.parent();
+
+        let Ok(player) = player_query.get(parent_entity) else {
+            continue;
+        };
+
+         if player.id == HOST_ID {
+            continue;
+        }
+
+    
+        let ray_origin = torch_transform.translation();
+        let ray_direct = torch_transform.forward();
+        let raycast = RayCast3d::new(ray_origin, ray_direct, flashlight.range);
+
+         if let Some(distance) = raycast.aabb_intersection_at(&world_aabb) {
+            detect_events.write(HostDetected {
+                detected_by_player_id: player.id,
+                distance,
+            });
+            
+            println!(
+                "🔦 Player {} spotted the host at distance {}!",
+                player.id, distance
+            );
+
+         }
+    }
+
+}
+
+fn host_detection_handler(
+    mut events: EventReader<HostDetected>,
+    mut server: ResMut<RenetServer>,
+){
+     for event in events.read() {
+        println!("Host detected by player {} at distance {}", 
+                 event.detected_by_player_id, event.distance);
+                
+
+     let msg = ServerMessage::HostDetected {
+            by_player_id: event.detected_by_player_id,
+            distance: event.distance,
+        };
+
+        let data = bincode::serialize(&msg).unwrap();
+
+        for client_id in server.clients_id() {
+            server.send_message(client_id, 0, data.clone());
+            
+        }
+    }
+}      
+

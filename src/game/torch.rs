@@ -1,6 +1,14 @@
 use bevy:: prelude::*;
 //use bevy_pbr::*;
 use bevy::ecs::system::EntityCommands;
+use bevy::math::Ray3d;
+
+
+#[derive(Component)]
+pub struct Flashlight {
+    
+    pub range: f32,
+}
 
 pub fn spawn_torch(
     parent: &mut EntityCommands,
@@ -11,6 +19,10 @@ pub fn spawn_torch(
     parent.with_children(|builder|{
 
         builder.spawn((
+            Flashlight{
+                range: 50.0,
+            },
+            
         Mesh3d(meshes.add(Cylinder::new(1.0, 4.0))),
         MeshMaterial3d(materials.add(StandardMaterial {base_color: Color::srgb(0.5, 0.5, 0.5),
         metallic: 0.8,

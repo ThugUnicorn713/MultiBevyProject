@@ -23,5 +23,10 @@ pub enum ServerMessage {
         id: u64,
         position: Vec3,
         rotation: Quat,
+    },
+
+    HostDetected{
+        by_player_id: u64, 
+        distance: f32,
     }
 }

@@ -2,13 +2,18 @@ use bevy::prelude::*;
 use serde::{Serialize, Deserialize};
 use crate::HostFlag;
 use crate::network::constants::HOST_ID;
-use bevy::input::mouse::MouseMotion;
+use bevy::math::bounding::Aabb3d;
 
 #[derive(Component)]
 pub struct Player {
 
     pub id: u64,
     pub speed: f32,
+}
+
+#[derive(Component)]
+pub struct HostCollider {
+    pub aabb: Aabb3d,
 }
 
 #[derive(Component, Serialize, Deserialize, Debug)]
