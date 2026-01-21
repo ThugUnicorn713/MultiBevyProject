@@ -106,7 +106,7 @@ fn spawn_host_entity(
 ){
 
         commands.spawn((
-        Player { id: HOST_ID, speed: 5.0 },
+        Player { id: HOST_ID, speed: 8.0 },
         Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
         MeshMaterial3d(materials.add(Color::srgb_u8(0, 0, 0))), // Black for host
         Transform::from_xyz(0.0, 0.5, 0.0),
@@ -131,10 +131,10 @@ fn update_server(
      let _ = transport.update(time.delta(), &mut server);
     server.update(time.delta());
   
-    for client_id in server.clients_id() {
-        let stats = server.network_info(client_id).unwrap();
-       // println!("SERVER stats for client {}: sent_bytes={}, received_bytes={}", client_id, stats.bytes_sent_per_second, stats.bytes_received_per_second);
-    }
+    // for client_id in server.clients_id() {
+    //     let stats = server.network_info(client_id).unwrap();
+    //    // println!("SERVER stats for client {}: sent_bytes={}, received_bytes={}", client_id, stats.bytes_sent_per_second, stats.bytes_received_per_second);
+    // }
     
 
     // Handle connection/disconnection events
@@ -254,7 +254,7 @@ fn send_lobby_update(
 
 fn flashlight_detection(
     flash_query: Query<(&GlobalTransform, &Flashlight, &ChildOf)>,
-    player_query: Query<(&Player)>,
+    player_query: Query<&Player>,
     host_query: Query<(&GlobalTransform, &Player, &HostCollider)>,
     mut detect_events: EventWriter<HostDetected>
 ){
@@ -269,7 +269,7 @@ fn flashlight_detection(
         min: (Vec3::from(host_collider.aabb.min) + host_pos).into(),
         max: (Vec3::from(host_collider.aabb.max) + host_pos).into(),
     };
-
+     
     //check each flashlight
     for (torch_transform, flashlight, child_of) in flash_query.iter() {
         let parent_entity = child_of.parent();
@@ -284,7 +284,7 @@ fn flashlight_detection(
 
     
         let ray_origin = torch_transform.translation();
-        let ray_direct = torch_transform.forward();
+        let ray_direct = torch_transform.down();
         let raycast = RayCast3d::new(ray_origin, ray_direct, flashlight.range);
 
          if let Some(distance) = raycast.aabb_intersection_at(&world_aabb) {
@@ -292,11 +292,6 @@ fn flashlight_detection(
                 detected_by_player_id: player.id,
                 distance,
             });
-            
-            println!(
-                "🔦 Player {} spotted the host at distance {}!",
-                player.id, distance
-            );
 
          }
     }

@@ -20,9 +20,9 @@ pub fn spawn_torch(
 
         builder.spawn((
             Flashlight{
-                range: 50.0,
+                range: 20.0,
             },
-            
+
         Mesh3d(meshes.add(Cylinder::new(1.0, 4.0))),
         MeshMaterial3d(materials.add(StandardMaterial {base_color: Color::srgb(0.5, 0.5, 0.5),
         metallic: 0.8,
