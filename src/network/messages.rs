@@ -30,7 +30,12 @@ pub enum ServerMessage {
         distance: f32,
     },
  
-    HostVisibility { visible: bool },
+    HostVisibility { 
+        visible: bool,
+        position: Option<Vec3>,
+        rotation: Option<Quat>,
+
+    },
 
     HostTransform { 
         position: Vec3, 

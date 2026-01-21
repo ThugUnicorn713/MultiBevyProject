@@ -241,9 +241,10 @@ fn receive_messages(mut client: ResMut<RenetClient>,
 
                 ServerMessage::HostDetected { by_player_id, distance } => {
                      println!("CLIENT: Host spotted by player {} at {}m!", by_player_id, distance);
+                     println!("CLIENT: host_entity current state: {:?}", *host_entity);
                 }
 
-                ServerMessage::HostVisibility { visible } => {
+                ServerMessage::HostVisibility { visible, position, rotation } => {
                     println!("CLIENT: Host visibility now: {}", visible);
 
                     if visible{
@@ -252,21 +253,25 @@ fn receive_messages(mut client: ResMut<RenetClient>,
                                 RemotePlayer { id: HOST_ID },
                                 Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
                                 MeshMaterial3d(materials.add(Color::srgb_u8(0, 0, 0))),
-                                Transform::default(),
+                                Transform{
+                                    translation: position.unwrap_or_default(),
+                                    rotation: rotation.unwrap_or_default(),
+                                    ..default()
+                                },
                                 GlobalTransform::default(),
                             )).id();
 
                             *host_entity = Some(entity);
                             println!("  -> Spawned host entity");
+                        } 
 
-                        } else {
+                    } else {
                             if let Some(entity) = *host_entity {
                                 commands.entity(entity).despawn();
                                 *host_entity = None;
                                 println!("  -> Despawned host entity");
                             }
                         }    
-                    }
                 }
 
                 ServerMessage::HostTransform { position, rotation } => {

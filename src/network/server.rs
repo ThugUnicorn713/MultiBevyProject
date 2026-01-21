@@ -36,7 +36,8 @@ impl Plugin for ServerPlugin {
             .insert_resource(HostVisibilityState::default())
             .add_event::<HostDetected>()
             .add_systems(Startup, spawn_host_entity)
-            .add_systems(Update, (update_server, flashlight_detection, track_host_spotting, update_host_visibility, host_detection_handler, ))
+            .add_systems(Update, (update_server, flashlight_detection, track_host_spotting, update_host_visibility, host_detection_handler ))
+            //.add_systems(Update, flush_server_packets.after(host_detection_handler))
             .add_systems(Update, move_host.run_if(|host_flag: Res<HostFlag>| host_flag.0));
     }
 }
@@ -142,6 +143,13 @@ fn spawn_host_entity(
     ));
 } 
 
+// fn flush_server_packets(
+//    mut server: ResMut<RenetServer>,
+//    mut transport: ResMut<NetcodeServerTransport>, 
+// ){
+//      let _ = transport.send_packets(&mut server);
+// }
+
 
 
 fn update_server(
@@ -153,7 +161,7 @@ fn update_server(
     mut query: Query<(&Player, &mut Transform)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut visibility: ResMut<HostVisibilityState>,
+    visibility: Res<HostVisibilityState>,
 ) {
     
      let _ = transport.update(time.delta(), &mut server);
@@ -435,27 +443,33 @@ fn update_host_visibility(
     if has_became_visible {
         println!("Host becoming visible to clients!");
        
-        let vis_msg = ServerMessage::HostVisibility { visible: true };
-        let vis_data = bincode::serialize(&vis_msg).unwrap();
+        
+        
         
         for (transform, player) in host_query.iter() {
             if player.id == HOST_ID {
-                let transform_msg = ServerMessage::HostTransform {
-                    position: transform.translation,
-                    rotation: transform.rotation,
+                let vis_msg = ServerMessage::HostVisibility { 
+                    visible: true,
+                    position: Some(transform.translation),
+                    rotation: Some(transform.rotation), 
                 };
-                let transform_data = bincode::serialize(&transform_msg).unwrap();
+                let vis_data = bincode::serialize(&vis_msg).unwrap();
+                // let transform_msg = ServerMessage::HostTransform {
+                //     position: transform.translation,
+                //     rotation: transform.rotation,
+                // };
+                //let transform_data = bincode::serialize(&transform_msg).unwrap();
                 
                 for client_id in server.clients_id() {
                     server.send_message(client_id, 0, vis_data.clone());
-                    server.send_message(client_id, 0, transform_data.clone());
+                    //server.send_message(client_id, 0, transform_data.clone());
                 }
             }
         }
 
     }
     
-    // if visible, countdown timer
+    
     if visibility.is_visible {
         visibility.vis_timer -= time.delta_secs();
 
@@ -463,7 +477,11 @@ fn update_host_visibility(
             println!("Host becoming invisible again!");
             visibility.is_visible = false;
             
-            let msg = ServerMessage::HostVisibility { visible: false };
+            let msg = ServerMessage::HostVisibility { 
+                visible: false,
+                position: None,
+                rotation: None, 
+            };
             let data = bincode::serialize(&msg).unwrap();
             
             for client_id in server.clients_id() {
