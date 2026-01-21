@@ -28,5 +28,13 @@ pub enum ServerMessage {
     HostDetected{
         by_player_id: u64, 
         distance: f32,
-    }
+    },
+ 
+    HostVisibility { visible: bool },
+
+    HostTransform { 
+        position: Vec3, 
+        rotation: Quat 
+    },
+
 }

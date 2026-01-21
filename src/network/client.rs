@@ -185,6 +185,7 @@ fn receive_messages(mut client: ResMut<RenetClient>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut players: Query<(&RemotePlayer, &mut Transform)>,
     mut existing_ids: Local<HashSet<u64>>,
+    mut host_entity: Local<Option<Entity>>
 ) {  
 
 //let mut message_count = 0;
@@ -241,11 +242,45 @@ fn receive_messages(mut client: ResMut<RenetClient>,
                 ServerMessage::HostDetected { by_player_id, distance } => {
                      println!("CLIENT: Host spotted by player {} at {}m!", by_player_id, distance);
                 }
+
+                ServerMessage::HostVisibility { visible } => {
+                    println!("CLIENT: Host visibility now: {}", visible);
+
+                    if visible{
+                        if host_entity.is_none(){
+                            let entity = commands.spawn((
+                                RemotePlayer { id: HOST_ID },
+                                Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
+                                MeshMaterial3d(materials.add(Color::srgb_u8(0, 0, 0))),
+                                Transform::default(),
+                                GlobalTransform::default(),
+                            )).id();
+
+                            *host_entity = Some(entity);
+                            println!("  -> Spawned host entity");
+
+                        } else {
+                            if let Some(entity) = *host_entity {
+                                commands.entity(entity).despawn();
+                                *host_entity = None;
+                                println!("  -> Despawned host entity");
+                            }
+                        }    
+                    }
+                }
+
+                ServerMessage::HostTransform { position, rotation } => {
+                    if let Some(entity) = *host_entity {
+
+                        if let Ok((_, mut transform)) = players.get_mut(entity) {
+                            transform.translation = position;
+                            transform.rotation = rotation;
+                        }
+                    }         
+                }
             }
         }
     }
 }
-
-
 
 

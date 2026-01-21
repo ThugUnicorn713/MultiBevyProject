@@ -10,6 +10,8 @@ use bevy_renet2::netcode::NativeSocket;
 use std::net::UdpSocket;
 use std::time::Duration;
 use std::time::SystemTime;
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::HostFlag;
 use crate::network::messages::{ClientMessage, ServerMessage};
@@ -30,9 +32,11 @@ impl Plugin for ServerPlugin {
             .insert_resource(server)
             .insert_resource(transport_layer)
             .insert_resource(Lobby::default())
+            .insert_resource(HostSpottedTracker::default())
+            .insert_resource(HostVisibilityState::default())
             .add_event::<HostDetected>()
             .add_systems(Startup, spawn_host_entity)
-            .add_systems(Update, (update_server,flashlight_detection, host_detection_handler))
+            .add_systems(Update, (update_server, flashlight_detection, track_host_spotting, update_host_visibility, host_detection_handler, ))
             .add_systems(Update, move_host.run_if(|host_flag: Res<HostFlag>| host_flag.0));
     }
 }
@@ -42,6 +46,29 @@ pub struct HostDetected {
     pub detected_by_player_id: u64,
     pub distance: f32,
 }
+
+#[derive(Resource, Default)]
+struct HostSpottedTracker {
+   spotted_timers: HashMap<u64, f32>, //player id and time spotted
+}
+
+#[derive(Resource)]
+struct HostVisibilityState {
+    is_visible: bool,
+    vis_timer: f32,
+    vis_duration: f32,
+}
+
+impl Default for HostVisibilityState {
+    fn default() -> Self {
+        Self { 
+            is_visible: false,
+            vis_timer: 0.0, 
+            vis_duration: 3.0 
+        }    
+    }
+}
+
 
 #[derive(Resource)]
 struct Lobby {
@@ -126,6 +153,7 @@ fn update_server(
     mut query: Query<(&Player, &mut Transform)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut visibility: ResMut<HostVisibilityState>,
 ) {
     
      let _ = transport.update(time.delta(), &mut server);
@@ -226,6 +254,27 @@ fn update_server(
             
         }
     }
+
+    if visibility.is_visible {
+        for (player, transform) in query.iter(){
+
+            if player.id == HOST_ID {
+                let msg = ServerMessage::HostTransform {
+                    position: transform.translation,
+                    rotation: transform.rotation,
+                };
+                let data = bincode::serialize(&msg).unwrap();
+
+                for client_id in server.clients_id() {
+                    server.send_message(client_id, 0, data.clone());
+                }
+                break;
+            }
+
+        }
+
+    }
+
         let _ = transport.send_packets(&mut server); //THE HERO!!!
         
     }
@@ -237,12 +286,23 @@ fn send_lobby_update(
     lobby:  &Lobby,
 ) {
     
-    let  all_players = lobby.players.clone();
+    // let  all_players = lobby.players.clone();
 
-    println!("SERVER: Sending lobby update with {} players: {:?}", all_players.len(), all_players);
+    // println!("SERVER: Sending lobby update with {} players: {:?}", all_players.len(), all_players);
 
-    let msg = ServerMessage::LobbyUpdate(all_players);
+    // let msg = ServerMessage::LobbyUpdate(all_players);
 
+    // let p_amount = bincode::serialize(&msg).unwrap();
+
+    // Filter out HOST_ID - clients won't spawn host initially
+    let visible_players: Vec<u64> = lobby.players.iter()
+        .filter(|&&id| id != HOST_ID)
+        .copied()
+        .collect();
+
+    println!("SERVER: Sending lobby update with {} players (excluding host): {:?}", visible_players.len(), visible_players);
+
+    let msg = ServerMessage::LobbyUpdate(visible_players);
     let p_amount = bincode::serialize(&msg).unwrap();
 
     for client_id in server.clients_id() {
@@ -321,3 +381,94 @@ fn host_detection_handler(
     }
 }      
 
+fn track_host_spotting(
+    mut events: EventReader<HostDetected>,
+    mut tracker: ResMut<HostSpottedTracker>,
+    mut visibility: ResMut<HostVisibilityState>,
+    time: Res<Time>,
+) {
+    let mut spotting_this_frame = HashSet::new();
+    
+    for event in events.read() {
+        spotting_this_frame.insert(event.detected_by_player_id); //collect who is spotting
+
+        let timer = tracker.spotted_timers
+            .entry(event.detected_by_player_id)
+            .or_insert(0.0);
+        
+        *timer += time.delta_secs();
+        
+        println!("DEBUG: Player {} spotting timer now at: {} seconds", event.detected_by_player_id, *timer);
+        
+        if *timer >= 3.0 && !visibility.is_visible {
+            println!("Host has been spotted for 3 secs! Making visible!");
+            visibility.is_visible = true;
+            visibility.vis_timer = visibility.vis_duration;
+        }
+    }
+    
+    // Decay timers ONLY for players NOT spotting this frame
+    for (player_id, timer) in tracker.spotted_timers.iter_mut() {
+        if !spotting_this_frame.contains(player_id) {
+            if *timer > 0.0 {
+                println!("DEBUG: Player {} looked away! Timer is reset!", player_id);
+            }
+            *timer = 0.0;
+        }
+    }
+    
+    println!("DEBUG: Processed {} detection events this frame. Visibility: {}", spotting_this_frame.len(), visibility.is_visible);
+}
+
+
+//manage ghost visibility timer 
+fn update_host_visibility(    
+    mut visibility: ResMut<HostVisibilityState>,
+    mut server: ResMut<RenetServer>,
+    host_query: Query<(&Transform, &Player)>,
+    time: Res<Time>,
+) {
+
+    let has_became_visible = visibility.is_visible && 
+                               visibility.vis_timer == visibility.vis_duration;
+    
+    if has_became_visible {
+        println!("Host becoming visible to clients!");
+       
+        let vis_msg = ServerMessage::HostVisibility { visible: true };
+        let vis_data = bincode::serialize(&vis_msg).unwrap();
+        
+        for (transform, player) in host_query.iter() {
+            if player.id == HOST_ID {
+                let transform_msg = ServerMessage::HostTransform {
+                    position: transform.translation,
+                    rotation: transform.rotation,
+                };
+                let transform_data = bincode::serialize(&transform_msg).unwrap();
+                
+                for client_id in server.clients_id() {
+                    server.send_message(client_id, 0, vis_data.clone());
+                    server.send_message(client_id, 0, transform_data.clone());
+                }
+            }
+        }
+
+    }
+    
+    // if visible, countdown timer
+    if visibility.is_visible {
+        visibility.vis_timer -= time.delta_secs();
+
+        if visibility.vis_timer <= 0.0 {
+            println!("Host becoming invisible again!");
+            visibility.is_visible = false;
+            
+            let msg = ServerMessage::HostVisibility { visible: false };
+            let data = bincode::serialize(&msg).unwrap();
+            
+            for client_id in server.clients_id() {
+                server.send_message(client_id, 0, data.clone());
+            }
+        }
+    }
+}
