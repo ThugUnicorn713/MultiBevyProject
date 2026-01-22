@@ -18,6 +18,7 @@ use crate::network::messages::{ClientMessage, ServerMessage};
 use crate::game::player::*;
 use crate::game::player::move_host;
 use crate::game::torch::*;
+use crate::game::map_gen::*;
 
 use crate::network::constants::HOST_ID;
 
@@ -28,16 +29,19 @@ impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
 
         let (server, transport_layer) = setup_server();
+        let map_data = generate_map();
+
         app
             .insert_resource(server)
             .insert_resource(transport_layer)
             .insert_resource(Lobby::default())
             .insert_resource(HostSpottedTracker::default())
             .insert_resource(HostVisibilityState::default())
+            .insert_resource(map_data)
             .add_event::<HostDetected>()
-            .add_systems(Startup, spawn_host_entity)
-            .add_systems(Update, (update_server, flashlight_detection, track_host_spotting, update_host_visibility, host_detection_handler ))
-            //.add_systems(Update, flush_server_packets.after(host_detection_handler))
+            .add_systems(Startup, (spawn_host_entity, spawn_map_obstacles))
+            .add_systems(Update, (update_server, flashlight_detection, 
+                track_host_spotting, update_host_visibility, host_detection_handler, check_collisons))
             .add_systems(Update, move_host.run_if(|host_flag: Res<HostFlag>| host_flag.0));
     }
 }
@@ -137,7 +141,7 @@ fn spawn_host_entity(
         Player { id: HOST_ID, speed: 8.0 },
         Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
         MeshMaterial3d(materials.add(Color::srgb_u8(0, 0, 0))), // Black for host
-        Transform::from_xyz(0.0, 0.5, 0.0),
+        Transform::from_xyz(0.0, 2.5, 0.0),
         GlobalTransform::default(),
         HostCollider{aabb:Aabb3d{min: Vec3::splat(-2.5).into(), max: Vec3::splat(2.5).into(),}},
     ));
@@ -156,12 +160,13 @@ fn update_server(
     mut server: ResMut<RenetServer>,
     mut transport: ResMut<NetcodeServerTransport>,
     mut lobby: ResMut<Lobby>,
-    time:Res<Time>,
     mut commands: Commands,
     mut query: Query<(&Player, &mut Transform)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     visibility: Res<HostVisibilityState>,
+    map_data: Res<MapData>,
+    time:Res<Time>,
 ) {
     
      let _ = transport.update(time.delta(), &mut server);
@@ -190,13 +195,21 @@ fn update_server(
                         Player { id: client_id, speed: 5.0 },
                         Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
                         MeshMaterial3d(materials.add(Color::srgb_u8(255, 255, 255))),
-                        Transform::from_xyz((lobby.players.len() as f32) * 6.0, 0.5, 0.0),
+                        Transform::from_xyz((lobby.players.len() as f32) * 6.0, 2.5, 0.0),
                         GlobalTransform::default(),
                     ));
                         
                         spawn_torch(&mut entity, &mut meshes, &mut materials);
 
                      println!("SERVER: Spawned player entity for client {}", client_id);
+
+                        //send map data!
+                        let map_msg = ServerMessage::MapData(map_data.obstacles.clone());
+                        let map_bytes = bincode::serialize(&map_msg).unwrap();
+
+                        server.send_message(client_id, 0, map_bytes);
+                        println!("SERVER: Sent map data to client {}", client_id);
+
                      send_lobby_update(&mut server, &lobby);
                 }
 
@@ -425,7 +438,7 @@ fn track_host_spotting(
         }
     }
     
-    println!("DEBUG: Processed {} detection events this frame. Visibility: {}", spotting_this_frame.len(), visibility.is_visible);
+    //println!("DEBUG: Processed {} detection events this frame. Visibility: {}", spotting_this_frame.len(), visibility.is_visible);
 }
 
 

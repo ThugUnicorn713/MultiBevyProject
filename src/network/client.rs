@@ -2,25 +2,29 @@ use bevy::prelude::*;
 use bevy_renet2::prelude::*;
 use bevy_renet2::prelude::{ConnectionConfig, ChannelConfig};
 use bevy_renet2::netcode::{ClientAuthentication, NetcodeClientTransport, NativeSocket};
+
 use std::net::UdpSocket;
 use::std::time::Duration;
 use std::time::SystemTime;
+use std::collections::HashSet;
+
 use crate::HostFlag;
 use crate::network::messages::{ClientMessage, ServerMessage};
 use crate::game::player_input::player_input_system;
 use crate::game::torch::spawn_torch;
 use crate::network::constants::HOST_ID;
-use std::collections::HashSet;
+
+//use crate::game::map_gen::ObstacleData;
 
 
 #[derive(Component)]
 pub struct RemotePlayer{
 
     pub id: u64,
-    
 }
 
-
+#[derive(Component)]
+struct ClientObstacle;
 pub struct ClientPlugin;
 
 impl Plugin for ClientPlugin {
@@ -217,7 +221,7 @@ fn receive_messages(mut client: ResMut<RenetClient>,
                                     Color::srgb_u8(255, 255, 255) 
                                 }
                             )),
-                            Transform::from_xyz(i as f32 * 6.0, 0.5, 0.0),
+                            Transform::from_xyz(i as f32 * 6.0, 2.5, 0.0),
                             GlobalTransform::default(),
                         ));
                         
@@ -282,6 +286,35 @@ fn receive_messages(mut client: ResMut<RenetClient>,
                             transform.rotation = rotation;
                         }
                     }         
+                }
+
+                ServerMessage::MapData(obstacles) => {
+                     println!("CLIENT: Received map with {} obstacles", obstacles.len());
+
+                     for obstacle in obstacles {
+                        let mesh = if obstacle.is_cylinder{
+                             meshes.add(Cylinder::new(obstacle.width / 2.0, obstacle.height))
+                        } else {
+                            meshes.add(Cuboid::new(obstacle.width, obstacle.height, obstacle.depth))
+                        };
+
+                        commands.spawn((
+                            ClientObstacle,
+                            Mesh3d(mesh),
+                            MeshMaterial3d(materials.add(StandardMaterial { 
+                                base_color: Color::srgb(obstacle.color[0], obstacle.color[1], obstacle.color[2]),
+                                ..default()
+                            })),
+                            Transform {
+                                translation: obstacle.position,
+                                rotation: obstacle.rotation,
+                                ..default()
+                            },
+                            GlobalTransform::default(),
+                        ));
+                    }
+
+                     println!("CLIENT: Finished spawning obstacles!");
                 }
             }
         }

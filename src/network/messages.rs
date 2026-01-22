@@ -1,5 +1,8 @@
 use serde::{Serialize, Deserialize};
 use bevy::prelude::*;
+use crate::game::map_gen::ObstacleData;
+
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
@@ -18,6 +21,7 @@ pub enum ClientMessage {
 pub enum ServerMessage {
 
     LobbyUpdate(Vec<u64>),
+    MapData(Vec<ObstacleData>),
 
     PlayerTransform{
         id: u64,
