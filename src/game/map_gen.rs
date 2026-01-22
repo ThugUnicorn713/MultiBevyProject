@@ -99,6 +99,10 @@ pub fn check_collisons(
     mut player_query: Query<(&Player, &mut Transform)>,
     obstacle_query: Query<(&Obstacle, &Transform), Without<Player>>,
 ){
+     let obstacle_count = obstacle_query.iter().count();
+    if obstacle_count != 50 {
+        println!("WARNING: Found {} obstacles in collision check, expected 50!", obstacle_count);
+    }
 
     for (player, mut player_transform) in player_query.iter_mut(){
         let player_extents = Vec3::splat(2.5);
@@ -109,16 +113,27 @@ pub fn check_collisons(
         };
 
          for (obstacle, obstacle_transform) in obstacle_query.iter(){
-        let obstacle_pos = obstacle_transform.translation;
+            let obstacle_pos = obstacle_transform.translation;
 
-        let obstacle_aabb = Aabb3d {
-            min: (Vec3::from(obstacle.aabb.min) + obstacle_pos).into(),
-            max: (Vec3::from(obstacle.aabb.max) + obstacle_pos).into(),
-        };
+            let obstacle_aabb = Aabb3d {
+                min: (Vec3::from(obstacle.aabb.min) + obstacle_pos).into(),
+                max: (Vec3::from(obstacle.aabb.max) + obstacle_pos).into(),
+            };
 
          if aabbs_intersect(&player_aabb, &obstacle_aabb) {
-                let push_direction = (player_transform.translation - obstacle_pos).normalize();
-                player_transform.translation += push_direction * 0.1;
+                // let push_direction = (player_transform.translation - obstacle_pos).normalize();
+                // player_transform.translation += push_direction * 0.1;
+
+                 let horizontal_offset = Vec2::new(
+                    player_transform.translation.x - obstacle_pos.x,
+                    player_transform.translation.z - obstacle_pos.z,
+                );
+                
+                if horizontal_offset.length() > 0.0 {
+                    let push_direction_2d = horizontal_offset.normalize();
+                    let push_direction_3d = Vec3::new(push_direction_2d.x, 0.0, push_direction_2d.y);
+                    player_transform.translation += push_direction_3d * 0.2; 
+                }
             }
         }
     }

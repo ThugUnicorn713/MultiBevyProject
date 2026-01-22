@@ -39,7 +39,7 @@ impl Plugin for ServerPlugin {
             .insert_resource(HostVisibilityState::default())
             .insert_resource(map_data)
             .add_event::<HostDetected>()
-            .add_systems(Startup, (spawn_host_entity, spawn_map_obstacles))
+            .add_systems(Startup, (spawn_host_entity, spawn_map_obstacles, spawn_visual_obstacles_for_host))
             .add_systems(Update, (update_server, flashlight_detection, 
                 track_host_spotting, update_host_visibility, host_detection_handler, check_collisons))
             .add_systems(Update, move_host.run_if(|host_flag: Res<HostFlag>| host_flag.0));
@@ -146,6 +146,36 @@ fn spawn_host_entity(
         HostCollider{aabb:Aabb3d{min: Vec3::splat(-2.5).into(), max: Vec3::splat(2.5).into(),}},
     ));
 } 
+
+fn spawn_visual_obstacles_for_host(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    map_data: Res<MapData>,
+){
+    for obstacle in &map_data.obstacles {
+        let mesh = if obstacle.is_cylinder {
+            meshes.add(Cylinder::new(obstacle.width / 2.0,obstacle.height))
+        } else {
+            meshes.add(Cuboid::new(obstacle.width, obstacle.height, obstacle.depth))
+        };
+
+        commands.spawn((
+            Mesh3d(mesh),
+            MeshMaterial3d(materials.add(StandardMaterial{ 
+                base_color: Color::srgb(obstacle.color[0], obstacle.color[1], obstacle.color[2]),
+                ..default()
+            })),
+            Transform{
+                translation: obstacle.position,
+                rotation: obstacle.rotation,
+                ..default()
+            },
+            GlobalTransform::default(),
+        ));
+    }
+
+}
 
 // fn flush_server_packets(
 //    mut server: ResMut<RenetServer>,
@@ -337,6 +367,7 @@ fn flashlight_detection(
     flash_query: Query<(&GlobalTransform, &Flashlight, &ChildOf)>,
     player_query: Query<&Player>,
     host_query: Query<(&GlobalTransform, &Player, &HostCollider)>,
+    obstacle_query: Query<(&Obstacle, &Transform)>,
     mut detect_events: EventWriter<HostDetected>
 ){
     let Some((host_transform, host_player, host_collider)) = host_query.iter()
@@ -368,13 +399,33 @@ fn flashlight_detection(
         let ray_direct = torch_transform.down();
         let raycast = RayCast3d::new(ray_origin, ray_direct, flashlight.range);
 
-         if let Some(distance) = raycast.aabb_intersection_at(&world_aabb) {
-            detect_events.write(HostDetected {
-                detected_by_player_id: player.id,
-                distance,
-            });
-
-         }
+        if let Some(host_distance) = raycast.aabb_intersection_at(&world_aabb) {
+        
+            let mut is_blocked = false;
+            
+            for (obstacle, obstacle_transform) in obstacle_query.iter() {
+                let obstacle_pos = obstacle_transform.translation;
+                let obstacle_aabb = Aabb3d {
+                    min: (Vec3::from(obstacle.aabb.min) + obstacle_pos).into(),
+                    max: (Vec3::from(obstacle.aabb.max) + obstacle_pos).into(),
+                };
+                
+                // Check if obstacle blocks the ray
+                if let Some(obstacle_distance) = raycast.aabb_intersection_at(&obstacle_aabb) {
+                    if obstacle_distance < host_distance {
+                        is_blocked = true;
+                        break;
+                    }
+                }
+            }
+            
+            if !is_blocked {
+                detect_events.write(HostDetected {
+                    detected_by_player_id: player.id,
+                    distance: host_distance,
+                });
+            }
+        }
     }
 
 }
@@ -503,3 +554,4 @@ fn update_host_visibility(
         }
     }
 }
+

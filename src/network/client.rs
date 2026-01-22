@@ -82,6 +82,7 @@ fn set_scene(
 
     ));
 
+    //map base
     commands.spawn((
         Mesh3d(meshes.add(Rectangle::new(100.0, 100.0))),
         MeshMaterial3d(materials.add(Color::srgb_u8(0, 190, 0))),
