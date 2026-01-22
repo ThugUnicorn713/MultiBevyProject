@@ -3,6 +3,7 @@ use serde::{Serialize, Deserialize};
 use crate::HostFlag;
 use crate::network::constants::HOST_ID;
 use bevy::math::bounding::Aabb3d;
+use crate::network::server::Gametimer;
 
 #[derive(Component)]
 pub struct Player {
@@ -20,10 +21,11 @@ pub fn move_host(
     key: Res<ButtonInput<KeyCode>>,
     host_flag: Res<HostFlag>,
     time: Res<Time>,
+    game_timer: Res<Gametimer>,
     mut query: Query<(&Player, &mut Transform)>,
 ){
 
-    if !host_flag.0 { return;}
+    if !host_flag.0 || !game_timer.started { return;}
 
     let mut direction = Vec2::ZERO;
 
@@ -56,31 +58,3 @@ pub fn move_host(
 
 
 }
-
-// pub fn rotate_host(
-//     mut motion_events: EventReader<MouseMotion>,
-//     mut query: Query<(&Player, &mut Transform)>,
-//     host_flag: Res<HostFlag>,
-// ){
-
-//     if !host_flag.0 {return;}
-
-//     let mut total_delta = Vec2::ZERO;
-
-//     for event in motion_events.read(){
-//         total_delta += event.delta;
-//     }
-
-//     if total_delta == Vec2::ZERO{ return;}
-
-//     let sensitivity = 0.02;
-//     let yaw = -total_delta.x * sensitivity;
-
-//     for (player, mut transform) in query.iter_mut(){
-//         if player.id == HOST_ID{
-
-//             transform.rotate_y(yaw);
-//         }
-//     }
-
-// }

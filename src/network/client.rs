@@ -13,9 +13,7 @@ use crate::network::messages::{ClientMessage, ServerMessage};
 use crate::game::player_input::player_input_system;
 use crate::game::torch::spawn_torch;
 use crate::network::constants::HOST_ID;
-use crate::network::server::GameOutcome;
-
-//use crate::game::map_gen::ObstacleData;
+use crate::game::ui::*;
 
 
 #[derive(Component)]
@@ -27,22 +25,7 @@ pub struct RemotePlayer{
 #[derive(Component)]
 struct ClientObstacle;
 
-#[derive(Resource)]
-struct GameState {
-    remaining: f32,
-    total_visibility: f32,
-    game_over: Option<GameOutcome>,
-}
 
-impl Default for GameState {
-    fn default() -> Self {
-        Self {
-            remaining: 180.0,
-            total_visibility: 0.0,
-            game_over: None,
-        }
-    }
-}
 
 pub struct ClientPlugin;
 
@@ -51,9 +34,9 @@ impl Plugin for ClientPlugin {
         
         app
             
-            .add_systems(Startup, (setup_host_client, set_scene))
+            .add_systems(Startup, (setup_host_client, set_scene, setup_ui))
             .insert_resource(GameState::default())
-
+            .add_systems(Update,update_ui)
             .add_systems(Update,
                  (
                     update_client, 
@@ -61,7 +44,6 @@ impl Plugin for ClientPlugin {
                     send_join, 
                     receive_messages,
                     flush_client_packets,
-                    draw_game_ui,
                 )
                     .chain()
                     .run_if(has_client),  //seperates clients from host
@@ -240,9 +222,9 @@ fn receive_messages(mut client: ResMut<RenetClient>,
                             Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
                             MeshMaterial3d(materials.add(
                                 if *id == HOST_ID { 
-                                    Color::srgb_u8(0, 0, 0) 
-                                } else { 
                                     Color::srgb_u8(255, 255, 255) 
+                                } else { 
+                                    Color::srgb_u8(255, 0, 0) 
                                 }
                             )),
                             Transform::from_xyz(i as f32 * 6.0, 2.5, 0.0),
@@ -280,7 +262,11 @@ fn receive_messages(mut client: ResMut<RenetClient>,
                             let entity = commands.spawn((
                                 RemotePlayer { id: HOST_ID },
                                 Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
-                                MeshMaterial3d(materials.add(Color::srgb_u8(0, 0, 0))),
+                                MeshMaterial3d(materials.add(StandardMaterial{
+                                    base_color: Color::WHITE,
+                                    emissive: LinearRgba::rgb(8.0, 8.0, 8.0),
+                                    ..default()
+                                })),
                                 Transform{
                                     translation: position.unwrap_or_default(),
                                     rotation: rotation.unwrap_or_default(),
@@ -345,6 +331,11 @@ fn receive_messages(mut client: ResMut<RenetClient>,
                         game_state.remaining = remaining;
                         game_state.total_visibility = total_visibility;
                     }
+                
+                ServerMessage::GameStarted =>{
+                    println!("CLIENT: Game has started!");
+                    game_state.started = true;
+                }
 
                 ServerMessage::GameOver { outcome } => {
                     println!("CLIENT: GAME OVER - {:?}!", outcome);
@@ -355,21 +346,5 @@ fn receive_messages(mut client: ResMut<RenetClient>,
     }
 }
 
-fn draw_game_ui(
-    mut gizmos: Gizmos,
-    game_state: Res<GameState>,
-) {
-    // Timer shows in top-left via debug text for now
-     if let Some(outcome) = game_state.game_over {
-        // Game over - show winner
-        println!("=== GAME OVER: {:?} ===", outcome);
-    } else {
-        // Show timer (you'll want to use proper UI later)
-        let mins = (game_state.remaining as u32) / 60;
-        let secs = (game_state.remaining as u32) % 60;
-        
-        // For now, just print occasionally
-        // Later you can add bevy_ui Text components
-    }
-}
+
 

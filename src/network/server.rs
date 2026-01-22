@@ -21,6 +21,7 @@ use crate::game::player::*;
 use crate::game::player::move_host;
 use crate::game::torch::*;
 use crate::game::map_gen::*;
+use crate::game::ui::*;
 
 use crate::network::constants::HOST_ID;
 
@@ -44,9 +45,9 @@ impl Plugin for ServerPlugin {
             .insert_resource(Gametimer::default())
             .add_event::<HostDetected>()
             .add_systems(Startup, (spawn_host_entity, spawn_map_obstacles, spawn_visual_obstacles_for_host))
-            .add_systems(Update, (update_server, flashlight_detection, track_host_spotting, update_host_visibility, 
-                host_detection_handler, check_collisons, update_game_timer, check_win_condition))
-            .add_systems(Update, move_host.run_if(|host_flag: Res<HostFlag>| host_flag.0));
+            .add_systems(Update, (update_server, flashlight_detection, track_host_spotting, update_host_visibility, host_detection_handler).chain())
+            .add_systems(Update, (check_collisons,update_game_timer, update_host_ui, check_win_condition).chain())
+            .add_systems(Update, (host_start_game, move_host).run_if(|host_flag: Res<HostFlag>| host_flag.0));
     }
 }
 
@@ -84,7 +85,6 @@ impl Default for HostVisibilityState {
     }
 }
 
-
 #[derive(Resource)]
 struct Lobby {
 
@@ -102,17 +102,20 @@ impl Default for Lobby {
 }
 
 #[derive(Resource)]
-struct Gametimer {
+pub struct Gametimer {
 
-    remaining: f32,
-    started: bool,
+    pub remaining: f32,
+    pub started: bool,
+    pub waiting_for_start: bool,
 }
 
 impl Default for Gametimer {
     fn default() -> Self {
         Self { 
             remaining: 180.0,
-             started: false,
+            started: false,
+            waiting_for_start: true,
+
         }
     }
 }
@@ -187,7 +190,11 @@ fn spawn_host_entity(
         commands.spawn((
         Player { id: HOST_ID, speed: 8.0 },
         Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
-        MeshMaterial3d(materials.add(Color::srgb_u8(0, 0, 0))), // Black for host
+        MeshMaterial3d(materials.add(StandardMaterial{
+            base_color: Color::WHITE,
+            emissive: LinearRgba::rgb(8.0, 8.0, 8.0),    //it glow hehe
+            ..default()
+        })),
         Transform::from_xyz(0.0, 2.5, 0.0),
         GlobalTransform::default(),
         HostCollider{aabb:Aabb3d{min: Vec3::splat(-2.5).into(), max: Vec3::splat(2.5).into(),}},
@@ -224,6 +231,38 @@ fn spawn_visual_obstacles_for_host(
 
 }
 
+fn host_start_game(
+    mut server: ResMut<RenetServer>,
+    mut timer: ResMut<Gametimer>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    lobby: Res<Lobby>,
+    host_flag: Res<HostFlag>,
+){
+     
+    if !host_flag.0 || !timer.waiting_for_start {return;}
+    
+    if lobby.players.len() < 2 {
+        if keyboard.just_pressed(KeyCode::Enter) {
+            println!("HOST: Cannot start - no clients connected!");
+        }
+        return;
+    }
+    
+    if keyboard.just_pressed(KeyCode::Enter) {
+        timer.started = true;
+        timer.waiting_for_start = false;
+        println!("HOST: Game started!");
+        
+        let msg = ServerMessage::GameStarted;
+        let data = bincode::serialize(&msg).unwrap();
+        
+        for client_id in server.clients_id() {
+            server.send_message(client_id, 0, data.clone());
+        }
+    }
+
+}
+
 fn update_server(
     mut server: ResMut<RenetServer>,
     mut transport: ResMut<NetcodeServerTransport>,
@@ -235,6 +274,7 @@ fn update_server(
     visibility: Res<HostVisibilityState>,
     map_data: Res<MapData>,
     time:Res<Time>,
+    game_timer: Res<Gametimer>,
 ) {
     
      let _ = transport.update(time.delta(), &mut server);
@@ -315,13 +355,22 @@ fn update_server(
                     }
                     
                     ClientMessage::PlayerInput { movement, rotation } => {
-                        for (player, mut transform) in query.iter_mut() {
-                            if player.id == client_id {
-                                transform.translation += movement * player.speed * time.delta_secs();
-                                transform.rotate_y(rotation);
-                                //player.rotation += rotation;
+                        if game_timer.started{
+                             for (player, mut transform) in query.iter_mut() {
+                                if player.id == client_id {
+                                    transform.translation += movement * player.speed * time.delta_secs();
+                                    transform.rotate_y(rotation);
+                                
+                                }
                             }
-                        }
+                        }else{
+                             for (player, mut transform) in query.iter_mut() {
+                                    if player.id == client_id {
+                                    
+                                        transform.rotate_y(rotation);
+                                    }
+                                }
+                            }
                     }
                 }
             }
@@ -464,9 +513,6 @@ fn host_detection_handler(
     mut server: ResMut<RenetServer>,
 ){
      for event in events.read() {
-        // println!("Host detected by player {} at distance {}", 
-        //          event.detected_by_player_id, event.distance);
-                
 
      let msg = ServerMessage::HostDetected {
             by_player_id: event.detected_by_player_id,
@@ -508,7 +554,6 @@ fn track_host_spotting(
         }
     }
     
-    // Decay timers ONLY for players NOT spotting this frame
     for (player_id, timer) in tracker.spotted_timers.iter_mut() {
         if !spotting_this_frame.contains(player_id) {
             if *timer > 0.0 {
@@ -585,22 +630,16 @@ fn update_game_timer(
     mut seen_tracker: ResMut<HostSeenTracker>,
     mut server: ResMut<RenetServer>,
     visibility: Res<HostVisibilityState>,
-    lobby: Res<Lobby>,
     time: Res<Time>,
 ){
-     // Start timer when at least one client is connected
-    if !game_timer.started && lobby.players.len() > 1 {
-        game_timer.started = true;
-        println!("GAME STARTED: Timer beginning!");
-    }
-    
     if !game_timer.started {return;}
+
     game_timer.remaining -= time.delta_secs();   
-    // Track visibility time
+    
     if visibility.is_visible {
         seen_tracker.total_visible_time += time.delta_secs();
     }
-    // Broadcast timer to clients every frame
+   
     let msg = ServerMessage::Gametimer {
         remaining: game_timer.remaining.max(0.0),
         total_visibility: seen_tracker.total_visible_time,
@@ -619,6 +658,8 @@ fn check_win_condition(
     mut game_ended: Local<bool>,
     game_timer: Res<Gametimer>,
     seen_tracker: Res<HostSeenTracker>,
+    mut game_state: Option<ResMut<GameState>>,
+    host_flag: Res<HostFlag>,
 ){
      if *game_ended {return;}
     
@@ -635,6 +676,13 @@ fn check_win_condition(
         
         println!("GAME OVER: {:?}!", outcome);
         println!("Host was visible for {:.1} seconds", seen_tracker.total_visible_time);
+
+        //update host UI
+         if host_flag.0 {
+            if let Some(mut state) = game_state {
+                state.game_over = Some(outcome);
+            }
+        }
         
         let msg = ServerMessage::GameOver { outcome };
         let data = bincode::serialize(&msg).unwrap();
@@ -644,4 +692,20 @@ fn check_win_condition(
         }
     }
 
+}
+
+fn update_host_ui(
+    game_timer: Res<Gametimer>,
+    seen_tracker: Res<HostSeenTracker>,
+    host_flag: Res<HostFlag>,
+    mut game_state: Option<ResMut<GameState>>,
+) {
+    if !host_flag.0 {return;}
+    
+        //Host timer
+    if let Some(mut state) = game_state {
+        state.remaining = game_timer.remaining.max(0.0);
+        state.total_visibility = seen_tracker.total_visible_time;
+        state.started = game_timer.started;
+    }
 }

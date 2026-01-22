@@ -24,6 +24,7 @@ pub enum ServerMessage {
     LobbyUpdate(Vec<u64>),
     MapData(Vec<ObstacleData>),
     GameOver { outcome: GameOutcome },
+    GameStarted,
 
     PlayerTransform{
         id: u64,
