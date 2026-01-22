@@ -13,6 +13,7 @@ use crate::network::messages::{ClientMessage, ServerMessage};
 use crate::game::player_input::player_input_system;
 use crate::game::torch::spawn_torch;
 use crate::network::constants::HOST_ID;
+use crate::network::server::GameOutcome;
 
 //use crate::game::map_gen::ObstacleData;
 
@@ -25,6 +26,24 @@ pub struct RemotePlayer{
 
 #[derive(Component)]
 struct ClientObstacle;
+
+#[derive(Resource)]
+struct GameState {
+    remaining: f32,
+    total_visibility: f32,
+    game_over: Option<GameOutcome>,
+}
+
+impl Default for GameState {
+    fn default() -> Self {
+        Self {
+            remaining: 180.0,
+            total_visibility: 0.0,
+            game_over: None,
+        }
+    }
+}
+
 pub struct ClientPlugin;
 
 impl Plugin for ClientPlugin {
@@ -33,6 +52,8 @@ impl Plugin for ClientPlugin {
         app
             
             .add_systems(Startup, (setup_host_client, set_scene))
+            .insert_resource(GameState::default())
+
             .add_systems(Update,
                  (
                     update_client, 
@@ -40,6 +61,7 @@ impl Plugin for ClientPlugin {
                     send_join, 
                     receive_messages,
                     flush_client_packets,
+                    draw_game_ui,
                 )
                     .chain()
                     .run_if(has_client),  //seperates clients from host
@@ -190,7 +212,8 @@ fn receive_messages(mut client: ResMut<RenetClient>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut players: Query<(&RemotePlayer, &mut Transform)>,
     mut existing_ids: Local<HashSet<u64>>,
-    mut host_entity: Local<Option<Entity>>
+    mut host_entity: Local<Option<Entity>>,
+    mut game_state: ResMut<GameState>,
 ) {  
 
 //let mut message_count = 0;
@@ -245,8 +268,8 @@ fn receive_messages(mut client: ResMut<RenetClient>,
                 }
 
                 ServerMessage::HostDetected { by_player_id, distance } => {
-                     println!("CLIENT: Host spotted by player {} at {}m!", by_player_id, distance);
-                     println!("CLIENT: host_entity current state: {:?}", *host_entity);
+                    //  println!("CLIENT: Host spotted by player {} at {}m!", by_player_id, distance);
+                    //  println!("CLIENT: host_entity current state: {:?}", *host_entity);
                 }
 
                 ServerMessage::HostVisibility { visible, position, rotation } => {
@@ -317,9 +340,36 @@ fn receive_messages(mut client: ResMut<RenetClient>,
 
                      println!("CLIENT: Finished spawning obstacles!");
                 }
+
+                ServerMessage::Gametimer { remaining, total_visibility } => {
+                        game_state.remaining = remaining;
+                        game_state.total_visibility = total_visibility;
+                    }
+
+                ServerMessage::GameOver { outcome } => {
+                    println!("CLIENT: GAME OVER - {:?}!", outcome);
+                    game_state.game_over = Some(outcome);
+                }
             }
         }
     }
 }
 
+fn draw_game_ui(
+    mut gizmos: Gizmos,
+    game_state: Res<GameState>,
+) {
+    // Timer shows in top-left via debug text for now
+     if let Some(outcome) = game_state.game_over {
+        // Game over - show winner
+        println!("=== GAME OVER: {:?} ===", outcome);
+    } else {
+        // Show timer (you'll want to use proper UI later)
+        let mins = (game_state.remaining as u32) / 60;
+        let secs = (game_state.remaining as u32) % 60;
+        
+        // For now, just print occasionally
+        // Later you can add bevy_ui Text components
+    }
+}
 

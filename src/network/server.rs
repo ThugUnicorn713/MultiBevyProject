@@ -5,6 +5,8 @@ use bevy_renet2::prelude::*;
 use bevy_renet2::prelude::{ConnectionConfig, ChannelConfig, ServerEvent};
 use bevy_renet2::netcode::{NetcodeServerTransport, ServerAuthentication, ServerSetupConfig};
 use bevy_renet2::netcode::NativeSocket;
+use serde::Deserialize;
+use serde::Serialize;
  
 
 use std::net::UdpSocket;
@@ -34,16 +36,24 @@ impl Plugin for ServerPlugin {
         app
             .insert_resource(server)
             .insert_resource(transport_layer)
+            .insert_resource(map_data)
             .insert_resource(Lobby::default())
             .insert_resource(HostSpottedTracker::default())
             .insert_resource(HostVisibilityState::default())
-            .insert_resource(map_data)
+            .insert_resource(HostSeenTracker::default())
+            .insert_resource(Gametimer::default())
             .add_event::<HostDetected>()
             .add_systems(Startup, (spawn_host_entity, spawn_map_obstacles, spawn_visual_obstacles_for_host))
-            .add_systems(Update, (update_server, flashlight_detection, 
-                track_host_spotting, update_host_visibility, host_detection_handler, check_collisons))
+            .add_systems(Update, (update_server, flashlight_detection, track_host_spotting, update_host_visibility, 
+                host_detection_handler, check_collisons, update_game_timer, check_win_condition))
             .add_systems(Update, move_host.run_if(|host_flag: Res<HostFlag>| host_flag.0));
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum GameOutcome {
+    GhostWins,
+    BustersWin,
 }
 
 #[derive(Event)]
@@ -91,6 +101,35 @@ impl Default for Lobby {
     }
 }
 
+#[derive(Resource)]
+struct Gametimer {
+
+    remaining: f32,
+    started: bool,
+}
+
+impl Default for Gametimer {
+    fn default() -> Self {
+        Self { 
+            remaining: 180.0,
+             started: false,
+        }
+    }
+}
+
+#[derive(Resource)]
+struct HostSeenTracker {
+    total_visible_time: f32,
+}
+
+impl Default for HostSeenTracker {
+    fn default() -> Self {
+        Self { 
+            total_visible_time: 0.0
+        }
+    }
+}
+
 fn setup_server() -> (RenetServer, NetcodeServerTransport) {
     let socket_addr = "127.0.0.1:5000".parse().unwrap();
     let socket = UdpSocket::bind(socket_addr).unwrap();
@@ -130,6 +169,14 @@ fn setup_server() -> (RenetServer, NetcodeServerTransport) {
 
     
 }
+
+// fn flush_server_packets(
+//    mut server: ResMut<RenetServer>,
+//    mut transport: ResMut<NetcodeServerTransport>, 
+// ){
+//      let _ = transport.send_packets(&mut server);
+// }
+
 
 fn spawn_host_entity(
     mut commands: Commands,
@@ -176,15 +223,6 @@ fn spawn_visual_obstacles_for_host(
     }
 
 }
-
-// fn flush_server_packets(
-//    mut server: ResMut<RenetServer>,
-//    mut transport: ResMut<NetcodeServerTransport>, 
-// ){
-//      let _ = transport.send_packets(&mut server);
-// }
-
-
 
 fn update_server(
     mut server: ResMut<RenetServer>,
@@ -336,15 +374,6 @@ fn send_lobby_update(
     server: &mut RenetServer, 
     lobby:  &Lobby,
 ) {
-    
-    // let  all_players = lobby.players.clone();
-
-    // println!("SERVER: Sending lobby update with {} players: {:?}", all_players.len(), all_players);
-
-    // let msg = ServerMessage::LobbyUpdate(all_players);
-
-    // let p_amount = bincode::serialize(&msg).unwrap();
-
     // Filter out HOST_ID - clients won't spawn host initially
     let visible_players: Vec<u64> = lobby.players.iter()
         .filter(|&&id| id != HOST_ID)
@@ -435,8 +464,8 @@ fn host_detection_handler(
     mut server: ResMut<RenetServer>,
 ){
      for event in events.read() {
-        println!("Host detected by player {} at distance {}", 
-                 event.detected_by_player_id, event.distance);
+        // println!("Host detected by player {} at distance {}", 
+        //          event.detected_by_player_id, event.distance);
                 
 
      let msg = ServerMessage::HostDetected {
@@ -470,7 +499,7 @@ fn track_host_spotting(
         
         *timer += time.delta_secs();
         
-        println!("DEBUG: Player {} spotting timer now at: {} seconds", event.detected_by_player_id, *timer);
+       // println!("DEBUG: Player {} spotting timer now at: {} seconds", event.detected_by_player_id, *timer);
         
         if *timer >= 3.0 && !visibility.is_visible {
             println!("Host has been spotted for 3 secs! Making visible!");
@@ -517,16 +546,11 @@ fn update_host_visibility(
                     position: Some(transform.translation),
                     rotation: Some(transform.rotation), 
                 };
+                
                 let vis_data = bincode::serialize(&vis_msg).unwrap();
-                // let transform_msg = ServerMessage::HostTransform {
-                //     position: transform.translation,
-                //     rotation: transform.rotation,
-                // };
-                //let transform_data = bincode::serialize(&transform_msg).unwrap();
                 
                 for client_id in server.clients_id() {
                     server.send_message(client_id, 0, vis_data.clone());
-                    //server.send_message(client_id, 0, transform_data.clone());
                 }
             }
         }
@@ -555,3 +579,69 @@ fn update_host_visibility(
     }
 }
 
+
+fn update_game_timer(
+    mut game_timer: ResMut<Gametimer>,
+    mut seen_tracker: ResMut<HostSeenTracker>,
+    mut server: ResMut<RenetServer>,
+    visibility: Res<HostVisibilityState>,
+    lobby: Res<Lobby>,
+    time: Res<Time>,
+){
+     // Start timer when at least one client is connected
+    if !game_timer.started && lobby.players.len() > 1 {
+        game_timer.started = true;
+        println!("GAME STARTED: Timer beginning!");
+    }
+    
+    if !game_timer.started {return;}
+    game_timer.remaining -= time.delta_secs();   
+    // Track visibility time
+    if visibility.is_visible {
+        seen_tracker.total_visible_time += time.delta_secs();
+    }
+    // Broadcast timer to clients every frame
+    let msg = ServerMessage::Gametimer {
+        remaining: game_timer.remaining.max(0.0),
+        total_visibility: seen_tracker.total_visible_time,
+    };
+    let data = bincode::serialize(&msg).unwrap();
+    
+    for client_id in server.clients_id() {
+        server.send_message(client_id, 0, data.clone());
+    }
+
+}
+
+
+fn check_win_condition(
+    mut server: ResMut<RenetServer>,
+    mut game_ended: Local<bool>,
+    game_timer: Res<Gametimer>,
+    seen_tracker: Res<HostSeenTracker>,
+){
+     if *game_ended {return;}
+    
+    let outcome = if seen_tracker.total_visible_time >= 15.0 {
+        Some(GameOutcome::BustersWin)
+    } else if game_timer.remaining <= 0.0 {
+        Some(GameOutcome::GhostWins)
+    } else {
+        None
+    };
+    
+    if let Some(outcome) = outcome {
+        *game_ended = true;
+        
+        println!("GAME OVER: {:?}!", outcome);
+        println!("Host was visible for {:.1} seconds", seen_tracker.total_visible_time);
+        
+        let msg = ServerMessage::GameOver { outcome };
+        let data = bincode::serialize(&msg).unwrap();
+        
+        for client_id in server.clients_id() {
+            server.send_message(client_id, 0, data.clone());
+        }
+    }
+
+}

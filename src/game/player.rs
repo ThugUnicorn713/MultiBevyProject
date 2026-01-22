@@ -16,13 +16,6 @@ pub struct HostCollider {
     pub aabb: Aabb3d,
 }
 
-#[derive(Component, Serialize, Deserialize, Debug)]
-pub enum Roles {
-
-    Ghost,
-    Buster,
-}
-
 pub fn move_host(
     key: Res<ButtonInput<KeyCode>>,
     host_flag: Res<HostFlag>,

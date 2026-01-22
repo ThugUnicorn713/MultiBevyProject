@@ -1,7 +1,8 @@
 use serde::{Serialize, Deserialize};
 use bevy::prelude::*;
-use crate::game::map_gen::ObstacleData;
 
+use crate::game::map_gen::ObstacleData;
+use crate::network::server::GameOutcome;
 
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -22,6 +23,7 @@ pub enum ServerMessage {
 
     LobbyUpdate(Vec<u64>),
     MapData(Vec<ObstacleData>),
+    GameOver { outcome: GameOutcome },
 
     PlayerTransform{
         id: u64,
@@ -45,5 +47,13 @@ pub enum ServerMessage {
         position: Vec3, 
         rotation: Quat 
     },
+
+    Gametimer {
+        remaining: f32,
+        total_visibility: f32,
+
+    },
+
+
 
 }
