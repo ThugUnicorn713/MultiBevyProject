@@ -62,14 +62,14 @@ pub fn generate_map() -> MapData {
 
     let wall_thickness = 2.0;
     let wall_height = 20.0;
-    let wall_offset = map_size + wall_thickness / 2.0;
+    let wall_offset = 50.0;//map_size + wall_thickness / 2.0;
 
      //North, South, East, West collider walls for map
 
      obstacles.push(ObstacleData {
         position: Vec3::new(0.0, wall_height / 2.0, wall_offset),
         rotation: Quat::IDENTITY,
-        width: map_size * 2.0 + wall_thickness * 2.0,
+        width: 100.0,//map_size * 2.0 + wall_thickness * 2.0,
         height: wall_height,
         depth: wall_thickness,
         is_cylinder: false,
@@ -79,7 +79,7 @@ pub fn generate_map() -> MapData {
     obstacles.push(ObstacleData {
         position: Vec3::new(0.0, wall_height / 2.0, -wall_offset),
         rotation: Quat::IDENTITY,
-        width: map_size * 2.0 + wall_thickness * 2.0,
+        width: 100.0,//map_size * 2.0 + wall_thickness * 2.0,
         height: wall_height,
         depth: wall_thickness,
         is_cylinder: false,
@@ -91,7 +91,7 @@ pub fn generate_map() -> MapData {
         rotation: Quat::IDENTITY,
         width: wall_thickness,
         height: wall_height,
-        depth: map_size * 2.0 + wall_thickness * 2.0,
+        depth: 100.0,//map_size * 2.0 + wall_thickness * 2.0,
         is_cylinder: false,
         color: [0.0, 0.0, 0.0],
     });
@@ -101,7 +101,7 @@ pub fn generate_map() -> MapData {
         rotation: Quat::IDENTITY,
         width: wall_thickness,
         height: wall_height,
-        depth: map_size * 2.0 + wall_thickness * 2.0,
+        depth: 100.0,//map_size * 2.0 + wall_thickness * 2.0,
         is_cylinder: false,
         color: [0.0, 0.0, 0.0],
     });
@@ -189,17 +189,6 @@ pub fn check_collisons(
                         player_transform.translation.z += overlap_z; // push forward
                     }
                 }
-
-                //  let horizontal_offset = Vec2::new(
-                //     player_transform.translation.x - obstacle_pos.x,
-                //     player_transform.translation.z - obstacle_pos.z,
-                // );
-                
-                // if horizontal_offset.length() > 0.0 {
-                //     let push_direction_2d = horizontal_offset.normalize();
-                //     let push_direction_3d = Vec3::new(push_direction_2d.x, 0.0, push_direction_2d.y);
-                //     player_transform.translation += push_direction_3d * 0.2; 
-                // }
             }
         }
     }
@@ -215,4 +204,52 @@ fn aabbs_intersect(a: &Aabb3d, b: &Aabb3d) -> bool {
     a_min.x <= b_max.x && a_max.x >= b_min.x &&
     a_min.y <= b_max.y && a_max.y >= b_min.y &&
     a_min.z <= b_max.z && a_max.z >= b_min.z
+}
+
+pub fn find_safe_spawn_pos(
+    obstacles: &[ObstacleData],
+    map_size: f32,
+    player_size: f32,
+    max_attempts: u32,
+) -> Vec3 {
+
+    let mut rng = rand::thread_rng();
+
+    for _ in 0..max_attempts{
+
+        let spot = Vec3::new(
+            rng.gen_range(-map_size..map_size),
+            2.5, //player height
+            rng.gen_range(-map_size..map_size),
+        );
+
+        let mut is_safe = true;
+
+        for obstacle in obstacles {
+
+             if obstacle.color[0] == 0.0 && obstacle.color[1] == 0.0 && obstacle.color[2] == 0.0 {
+                continue;
+            }
+            
+            let dx = spot.x - obstacle.position.x;
+            let dz = spot.z - obstacle.position.z;
+            let distance = (dx * dx + dz * dz).sqrt();
+            
+            // minimum safe distance to put player 
+            let obstacle_radius = (obstacle.width.max(obstacle.depth)) / 2.0;
+            let safe_distance = player_size / 2.0 + obstacle_radius + 0.3; // 0.3 buffer so its not as strict
+             
+            if distance < safe_distance {
+                is_safe = false;
+                break;
+            }
+        }
+        
+        if is_safe{
+             return spot;
+        }
+    }
+
+     println!("WARNING: Could not find safe spawn position, using center");
+    Vec3::new(0.0, 2.5, 0.0)
 }

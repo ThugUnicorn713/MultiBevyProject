@@ -185,7 +185,9 @@ fn spawn_host_entity(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    map_data: Res<MapData>,
 ){
+     let spawn_pos = find_safe_spawn_pos(&map_data.obstacles, 45.0, 5.0, 100);
 
         commands.spawn((
         Player { id: HOST_ID, speed: 8.0 },
@@ -195,7 +197,8 @@ fn spawn_host_entity(
             emissive: LinearRgba::rgb(8.0, 8.0, 8.0),    //it glow hehe
             ..default()
         })),
-        Transform::from_xyz(0.0, 2.5, 0.0),
+        //Transform::from_xyz(0.0, 2.5, 0.0),
+        Transform::from_translation(spawn_pos),
         GlobalTransform::default(),
         HostCollider{aabb:Aabb3d{min: Vec3::splat(-2.5).into(), max: Vec3::splat(2.5).into(),}},
     ));
@@ -298,12 +301,16 @@ fn update_server(
                     lobby.players.push(client_id);
                     println!("SERVER: Added client {} to lobby.players", client_id);
 
+                    let spawn_pos = find_safe_spawn_pos(&map_data.obstacles, 45.0, 5.0, 100);
+        
+
                     // Spawn their player entity
                    let mut entity = commands.spawn((
                         Player { id: client_id, speed: 5.0 },
                         Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
                         MeshMaterial3d(materials.add(Color::srgb_u8(255, 255, 255))),
-                        Transform::from_xyz((lobby.players.len() as f32) * 6.0, 2.5, 0.0),
+                        //Transform::from_xyz((lobby.players.len() as f32) * 6.0, 2.5, 0.0),
+                        Transform::from_translation(spawn_pos),
                         GlobalTransform::default(),
                     ));
                         
