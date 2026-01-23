@@ -302,6 +302,11 @@ fn receive_messages(mut client: ResMut<RenetClient>,
                      println!("CLIENT: Received map with {} obstacles", obstacles.len());
 
                      for obstacle in obstacles {
+                        
+                         if obstacle.color[0] == 0.0 && obstacle.color[1] == 0.0 && obstacle.color[2] == 0.0 {  // don't render walls
+                                continue; 
+                            }
+                        
                         let mesh = if obstacle.is_cylinder{
                              meshes.add(Cylinder::new(obstacle.width / 2.0, obstacle.height))
                         } else {

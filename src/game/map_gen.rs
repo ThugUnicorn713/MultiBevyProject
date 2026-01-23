@@ -59,7 +59,54 @@ pub fn generate_map() -> MapData {
             ],
         });
     }
-    println!("Generated map with {} obstacles", obstacles.len());
+
+    let wall_thickness = 2.0;
+    let wall_height = 20.0;
+    let wall_offset = map_size + wall_thickness / 2.0;
+
+     //North, South, East, West collider walls for map
+
+     obstacles.push(ObstacleData {
+        position: Vec3::new(0.0, wall_height / 2.0, wall_offset),
+        rotation: Quat::IDENTITY,
+        width: map_size * 2.0 + wall_thickness * 2.0,
+        height: wall_height,
+        depth: wall_thickness,
+        is_cylinder: false,
+        color: [0.0, 0.0, 0.0], // invisible 
+    });
+
+    obstacles.push(ObstacleData {
+        position: Vec3::new(0.0, wall_height / 2.0, -wall_offset),
+        rotation: Quat::IDENTITY,
+        width: map_size * 2.0 + wall_thickness * 2.0,
+        height: wall_height,
+        depth: wall_thickness,
+        is_cylinder: false,
+        color: [0.0, 0.0, 0.0],
+    });
+
+    obstacles.push(ObstacleData {
+        position: Vec3::new(wall_offset, wall_height / 2.0, 0.0),
+        rotation: Quat::IDENTITY,
+        width: wall_thickness,
+        height: wall_height,
+        depth: map_size * 2.0 + wall_thickness * 2.0,
+        is_cylinder: false,
+        color: [0.0, 0.0, 0.0],
+    });
+
+    obstacles.push(ObstacleData {
+        position: Vec3::new(-wall_offset, wall_height / 2.0, 0.0),
+        rotation: Quat::IDENTITY,
+        width: wall_thickness,
+        height: wall_height,
+        depth: map_size * 2.0 + wall_thickness * 2.0,
+        is_cylinder: false,
+        color: [0.0, 0.0, 0.0],
+    });
+
+    println!("Generated map with {} obstacles (including walls)", obstacles.len());
     MapData { obstacles }
     
 }
@@ -99,10 +146,6 @@ pub fn check_collisons(
     mut player_query: Query<(&Player, &mut Transform)>,
     obstacle_query: Query<(&Obstacle, &Transform), Without<Player>>,
 ){
-     let obstacle_count = obstacle_query.iter().count();
-    if obstacle_count != 50 {
-        println!("WARNING: Found {} obstacles in collision check, expected 50!", obstacle_count);
-    }
 
     for (player, mut player_transform) in player_query.iter_mut(){
         let player_extents = Vec3::splat(2.5);
@@ -121,19 +164,42 @@ pub fn check_collisons(
             };
 
          if aabbs_intersect(&player_aabb, &obstacle_aabb) {
-                // let push_direction = (player_transform.translation - obstacle_pos).normalize();
-                // player_transform.translation += push_direction * 0.1;
 
-                 let horizontal_offset = Vec2::new(
-                    player_transform.translation.x - obstacle_pos.x,
-                    player_transform.translation.z - obstacle_pos.z,
-                );
+                // calculate overlap on each axis
+                let player_min = Vec3::from(player_aabb.min);
+                let player_max = Vec3::from(player_aabb.max);
+                let obstacle_min = Vec3::from(obstacle_aabb.min);
+                let obstacle_max = Vec3::from(obstacle_aabb.max);
                 
-                if horizontal_offset.length() > 0.0 {
-                    let push_direction_2d = horizontal_offset.normalize();
-                    let push_direction_3d = Vec3::new(push_direction_2d.x, 0.0, push_direction_2d.y);
-                    player_transform.translation += push_direction_3d * 0.2; 
+                //calculate intersecting depth on each axis
+                let overlap_x = (player_max.x - obstacle_min.x).min(obstacle_max.x - player_min.x);
+                let overlap_z = (player_max.z - obstacle_min.z).min(obstacle_max.z - player_min.z);
+                
+                // push on X axis
+                if overlap_x < overlap_z { 
+                    if player_transform.translation.x < obstacle_pos.x {
+                        player_transform.translation.x -= overlap_x; // push left
+                    } else {
+                        player_transform.translation.x += overlap_x; // push right
+                    }
+                }else {  //push on Z axis
+                    if player_transform.translation.z < obstacle_pos.z {
+                        player_transform.translation.z -= overlap_z; //push back
+                    } else {
+                        player_transform.translation.z += overlap_z; // push forward
+                    }
                 }
+
+                //  let horizontal_offset = Vec2::new(
+                //     player_transform.translation.x - obstacle_pos.x,
+                //     player_transform.translation.z - obstacle_pos.z,
+                // );
+                
+                // if horizontal_offset.length() > 0.0 {
+                //     let push_direction_2d = horizontal_offset.normalize();
+                //     let push_direction_3d = Vec3::new(push_direction_2d.x, 0.0, push_direction_2d.y);
+                //     player_transform.translation += push_direction_3d * 0.2; 
+                // }
             }
         }
     }
