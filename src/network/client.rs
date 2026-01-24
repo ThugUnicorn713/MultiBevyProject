@@ -108,14 +108,14 @@ fn setup_host_client(mut commands: Commands, host_flag: Res<HostFlag>){
 }
 
 fn setup_client() -> (RenetClient, NetcodeClientTransport) {
-    let socket_addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
-    let socket = UdpSocket::bind(socket_addr).unwrap();
+    let socket_addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap(); // "127.0.0.1:0".parse().unwrap(); local terminals OG,                                                                         
+    let socket = UdpSocket::bind(socket_addr).unwrap();         //FOR ACTUAL MULTIPLAYER PLAYTEST: "0.0.0.0:0".parse().unwrap();
     socket.set_nonblocking(true).unwrap();
 
        let channel = ChannelConfig {
         channel_id: 0,
-        max_memory_usage_bytes: 5* 1024* 1024, //5mb
-        send_type: SendType::ReliableOrdered{resend_time: Duration::from_millis(100)}, //16
+        max_memory_usage_bytes: 5* 1024* 1024, 
+        send_type: SendType::ReliableOrdered{resend_time: Duration::from_millis(100)},
     };
       
 
@@ -134,15 +134,13 @@ fn setup_client() -> (RenetClient, NetcodeClientTransport) {
         .unwrap();
    
     let authentication = ClientAuthentication::Unsecure {
-        server_addr: "127.0.0.1:5000".parse().unwrap(),
-        client_id,
+        server_addr:"127.0.0.1:5000".parse().unwrap(),    //  "127.0.0.1:5000".parse().unwrap(), OG local terminals,
+        client_id,                                          // for ACTUAL MULTIPLAYER playtest set up "IP ADDR HERE::5000".parse().unwrap(),
         protocol_id: 0,
         socket_id: 0,
         user_data: None,
 
     };
-
-    //println!("My ID: {:?}", client_id);
 
      let transport_layer = NetcodeClientTransport::new(
         current_time,
@@ -170,7 +168,7 @@ fn flush_client_packets(
     mut client: ResMut<RenetClient>,
     mut transport: ResMut<NetcodeClientTransport>,
 ) {
-    let _ = transport.send_packets(&mut client);
+    let _ = transport.send_packets(&mut client);  //THE HERO, allows client to send messages to server
 } 
 
 fn send_join(mut client: ResMut<RenetClient>, mut sent: Local<bool>, host_flag: Res<HostFlag>,) {
@@ -240,7 +238,6 @@ fn receive_messages(mut client: ResMut<RenetClient>,
                 }
 
                 ServerMessage::PlayerTransform { id, position, rotation } => {
-                   //  println!("CLIENT: PlayerTransform for id={}, pos={:?}", id, position);
                     for (player, mut transform) in players.iter_mut() {
                         if player.id == id {
                             transform.translation = position;

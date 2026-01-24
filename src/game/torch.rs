@@ -1,7 +1,6 @@
 use bevy:: prelude::*;
-//use bevy_pbr::*;
 use bevy::ecs::system::EntityCommands;
-use bevy::math::Ray3d;
+//use bevy::math::Ray3d;
 
 
 #[derive(Component)]
@@ -29,7 +28,7 @@ pub fn spawn_torch(
             ..default()
         })),
         Transform::from_xyz(0.0,0.8 , -6.0)
-             .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)), // Rotate 90 degrees!
+             .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
         GlobalTransform::default(),
 
     ))

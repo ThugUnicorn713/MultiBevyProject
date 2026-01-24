@@ -134,7 +134,7 @@ impl Default for HostSeenTracker {
 }
 
 fn setup_server() -> (RenetServer, NetcodeServerTransport) {
-    let socket_addr = "127.0.0.1:5000".parse().unwrap();
+    let socket_addr =  "127.0.0.1:5000".parse().unwrap();  //set up for ACTUAL MUILTIPLAYER playtest "0.0.0.0:5000".parse().unwrap();   "127.0.0.1:5000" OG
     let socket = UdpSocket::bind(socket_addr).unwrap();
     socket.set_nonblocking(true).unwrap();
 
@@ -194,10 +194,9 @@ fn spawn_host_entity(
         Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
         MeshMaterial3d(materials.add(StandardMaterial{
             base_color: Color::WHITE,
-            emissive: LinearRgba::rgb(8.0, 8.0, 8.0),    //it glow hehe
+            emissive: LinearRgba::rgb(8.0, 8.0, 8.0),    //it glow now
             ..default()
         })),
-        //Transform::from_xyz(0.0, 2.5, 0.0),
         Transform::from_translation(spawn_pos),
         GlobalTransform::default(),
         HostCollider{aabb:Aabb3d{min: Vec3::splat(-2.5).into(), max: Vec3::splat(2.5).into(),}},
@@ -282,12 +281,6 @@ fn update_server(
     
      let _ = transport.update(time.delta(), &mut server);
     server.update(time.delta());
-  
-    // for client_id in server.clients_id() {
-    //     let stats = server.network_info(client_id).unwrap();
-    //    // println!("SERVER stats for client {}: sent_bytes={}, received_bytes={}", client_id, stats.bytes_sent_per_second, stats.bytes_received_per_second);
-    // }
-    
 
     // Handle connection/disconnection events
     while let Some(event) = server.get_event() {
@@ -306,10 +299,9 @@ fn update_server(
 
                     // Spawn their player entity
                    let mut entity = commands.spawn((
-                        Player { id: client_id, speed: 5.0 },
+                        Player { id: client_id, speed: 6.0 }, //OG speed 5.0
                         Mesh3d(meshes.add(Cuboid::new(5.0, 5.0, 5.0))),
                         MeshMaterial3d(materials.add(Color::srgb_u8(255, 255, 255))),
-                        //Transform::from_xyz((lobby.players.len() as f32) * 6.0, 2.5, 0.0),
                         Transform::from_translation(spawn_pos),
                         GlobalTransform::default(),
                     ));
@@ -420,7 +412,7 @@ fn update_server(
 
     }
 
-        let _ = transport.send_packets(&mut server); //THE HERO!!!
+        let _ = transport.send_packets(&mut server); //THE HERO, allows packets to be sent to client!!!
         
     }
 
@@ -443,7 +435,7 @@ fn send_lobby_update(
 
     for client_id in server.clients_id() {
         server.send_message(client_id, 0, p_amount.clone());
-         println!("  -> Sent to client {}", client_id);                                  // 0 channel, reliable and ordered, might add 1 as unreliable later
+         println!("  -> Sent to client {}", client_id);                                 
     }
 
 }
@@ -552,8 +544,6 @@ fn track_host_spotting(
         
         *timer += time.delta_secs();
         
-       // println!("DEBUG: Player {} spotting timer now at: {} seconds", event.detected_by_player_id, *timer);
-        
         if *timer >= 3.0 && !visibility.is_visible {
             println!("Host has been spotted for 3 secs! Making visible!");
             visibility.is_visible = true;
@@ -569,8 +559,6 @@ fn track_host_spotting(
             *timer = 0.0;
         }
     }
-    
-    //println!("DEBUG: Processed {} detection events this frame. Visibility: {}", spotting_this_frame.len(), visibility.is_visible);
 }
 
 
@@ -587,9 +575,6 @@ fn update_host_visibility(
     
     if has_became_visible {
         println!("Host becoming visible to clients!");
-       
-        
-        
         
         for (transform, player) in host_query.iter() {
             if player.id == HOST_ID {

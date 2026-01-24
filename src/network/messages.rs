@@ -13,8 +13,6 @@ pub enum ClientMessage {
         movement: Vec3,
         rotation: f32,
     },
-   // GhostAbility{is_cooldown_done: bool,ability_type: f32,},
-    //BusterAbility{is_cooldown_done: bool, ability_type: f32,},
 
 }
 

@@ -62,14 +62,15 @@ pub fn generate_map() -> MapData {
 
     let wall_thickness = 2.0;
     let wall_height = 20.0;
-    let wall_offset = 50.0;//map_size + wall_thickness / 2.0;
+    let wall_offset = 50.0;
+
 
      //North, South, East, West collider walls for map
 
      obstacles.push(ObstacleData {
         position: Vec3::new(0.0, wall_height / 2.0, wall_offset),
         rotation: Quat::IDENTITY,
-        width: 100.0,//map_size * 2.0 + wall_thickness * 2.0,
+        width: 100.0,
         height: wall_height,
         depth: wall_thickness,
         is_cylinder: false,
@@ -79,7 +80,7 @@ pub fn generate_map() -> MapData {
     obstacles.push(ObstacleData {
         position: Vec3::new(0.0, wall_height / 2.0, -wall_offset),
         rotation: Quat::IDENTITY,
-        width: 100.0,//map_size * 2.0 + wall_thickness * 2.0,
+        width: 100.0,
         height: wall_height,
         depth: wall_thickness,
         is_cylinder: false,
@@ -91,7 +92,7 @@ pub fn generate_map() -> MapData {
         rotation: Quat::IDENTITY,
         width: wall_thickness,
         height: wall_height,
-        depth: 100.0,//map_size * 2.0 + wall_thickness * 2.0,
+        depth: 100.0,
         is_cylinder: false,
         color: [0.0, 0.0, 0.0],
     });
@@ -101,7 +102,7 @@ pub fn generate_map() -> MapData {
         rotation: Quat::IDENTITY,
         width: wall_thickness,
         height: wall_height,
-        depth: 100.0,//map_size * 2.0 + wall_thickness * 2.0,
+        depth: 100.0,
         is_cylinder: false,
         color: [0.0, 0.0, 0.0],
     });
